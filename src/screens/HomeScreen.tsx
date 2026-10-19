@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, AppState, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { Price } from '../components/Price';
 import { Button } from '../components/Button';
 import { TopazExchangeModal } from '../components/TopazExchangeModal';
+import { PetScene } from '../pet/PetScene';
 import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 
-/** 연결된 뒤의 첫 화면. 펫 화면은 게임 설계가 정해지면 이 자리에 들어온다. */
+/** 연결된 뒤의 첫 화면 — 펫의 방, 부르기, 토파즈 교환. (시험판: 곰 한 마리, 이름·밥·성장은 서버 연결 때) */
 export function HomeScreen() {
     const me = useAuthStore(s => s.me)!;
     const refresh = useAuthStore(s => s.refresh);
@@ -15,6 +16,8 @@ export function HomeScreen() {
     const insets = useSafeAreaInsets();
     const [exchangeOpen, setExchangeOpen] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const callPet = useRef<(() => void) | null>(null);
+    const petName = '곰돌이';   // 시험판: 이름 짓기는 서버 연결 때
 
     // 숙제앱에서 다이아를 벌고 돌아왔을 때 잔고가 바로 맞도록
     useEffect(() => {
@@ -42,9 +45,10 @@ export function HomeScreen() {
             {linkError && <Text style={styles.error}>{linkError}</Text>}
 
             <View style={styles.petCard}>
-                <Text style={styles.egg}>🥚</Text>
-                <Text style={styles.petText}>곧 알이 도착해요</Text>
+                <PetScene callRef={callPet} />
             </View>
+
+            <Button variant="ocean" label={`👋 ${callName(petName)}!`} onPress={() => callPet.current?.()} style={{ alignSelf: 'center' }} />
 
             <Button variant="sun" label="💎 → 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
 
@@ -72,15 +76,14 @@ const styles = StyleSheet.create({
     petCard: {
         backgroundColor: colors.card,
         borderRadius: radius.xl,
-        paddingVertical: 48,
-        alignItems: 'center',
-        gap: 12,
+        overflow: 'hidden',
         ...shadows.card,
     },
-    egg: { fontSize: 96 },
-    petText: {
-        fontFamily: fontFamilies.bodyMed,
-        fontSize: fontSizes.lg,
-        color: colors.ink[500],
-    },
 });
+
+/** 부르는 말: 받침이 있으면 '아', 없으면 '야' (곰돌이 → 곰돌이야, 토순 → 토순아) */
+export function callName(name: string): string {
+    const last = name.charCodeAt(name.length - 1);
+    if (last < 0xac00 || last > 0xd7a3) return name;
+    return name + ((last - 0xac00) % 28 ? '아' : '야');
+}
