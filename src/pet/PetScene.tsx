@@ -7,7 +7,7 @@ import { bearModel, type Expr } from './bear';
 import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
 import {
-    makeSceneLayout, floorPoint, ROOM, WALL_H, CUSHION, BOWL, BALL_PART, BALL_START, POOP_PART, LETTER_PART, type SceneLayout,
+    makeSceneLayout, floorPoint, ROOM, WALL_H, CUSHION, BOWL, BOWL_FULL_PART, BALL_PART, BALL_START, POOP_PART, LETTER_PART, type SceneLayout,
 } from './room';
 
 const WALL = '#efe4d0';
@@ -22,6 +22,8 @@ interface Props {
     poops: Poop[];
     gone?: boolean;                       // 떠나고 편지만 남음
     onClean?: (id: string) => void;       // 똥을 톡 눌러 치움
+    bowlFull?: boolean;                   // 밥그릇에 밥이 담겨 있다
+    onAte?: () => void;                   // 펫이 밥을 다 먹었다
     /** 부르기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     callRef?: React.MutableRefObject<(() => void) | null>;
 }
@@ -38,12 +40,16 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, callRef, mode, poops, gone, onClean, bowlFull = false, onAte }: Props & { layout: SceneLayout }) {
     const a = useMemo(makePetAnims, []);
     const [yaw, setYaw] = useState(0);
     const [expr, setExpr] = useState<Expr>('normal');
     const poopsRef = useRef(poops);
     poopsRef.current = poops;
+    const bowlRef = useRef(bowlFull);
+    bowlRef.current = bowlFull;
+    const onAteRef = useRef(onAte);
+    onAteRef.current = onAte;
     const [sparkles, setSparkles] = useState<{ id: string; at: [number, number] }[]>([]);
     const [petDepth, setPetDepth] = useState(30);
     const [ballDepth, setBallDepth] = useState(BALL_START.x + BALL_START.z);
@@ -62,6 +68,8 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layo
         setExpr,
         setPetDepth,
         poops: () => poopsRef.current,
+        bowlFull: () => bowlRef.current,
+        ate: () => { bowlRef.current = false; onAteRef.current?.(); },
         effect: emoji => setEffects(list => [...list.slice(-3), { id: ++effectId.current, emoji }]),
         moveBall: (x, z, ms) => new Promise(res => {
             const [sx, sy] = floorPoint(l, x, z);
@@ -88,6 +96,7 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layo
         };
     }, [brain, callRef, gone]);
     useEffect(() => { if (!gone) brain.setMode(mode); }, [brain, mode, gone]);
+    useEffect(() => { if (!gone && bowlFull) brain.feed(); }, [brain, bowlFull, gone]);
 
     const clean = (p: Poop) => {
         setSparkles(list => [...list, { id: p.id, at: floorPoint(l, p.x, p.z, 2) }]);
@@ -101,7 +110,7 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layo
     // 소품·공·펫을 뒤(작은 x + z)부터 그린다
     const things: { depth: number; el: React.ReactNode }[] = [
         { depth: CUSHION.x + CUSHION.z, el: <PropView key="cushion" part={CUSHION.part} at={cushionAt} kv={l.kv} /> },
-        { depth: BOWL.x + BOWL.z, el: <PropView key="bowl" part={BOWL.part} at={bowlAt} kv={l.kv} /> },
+        { depth: BOWL.x + BOWL.z, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL.part} at={bowlAt} kv={l.kv} /> },
         {
             depth: ballDepth, el: (
                 <Animated.View key="ball" pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateX: ball.x }, { translateY: ball.y }] }}>

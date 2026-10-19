@@ -21,6 +21,8 @@ export interface BrainEnv {
     effect: (emoji: string) => void;                 // 머리 위에 잠깐 떠오르는 그림
     moveBall: (x: number, z: number, ms: number) => Promise<void>;
     poops: () => { x: number; z: number }[];
+    bowlFull: () => boolean;                         // 밥그릇에 밥이 담겨 있다
+    ate: () => void;                                 // 밥을 다 먹었다 (그릇을 비운다)
 }
 
 class Cancelled extends Error {}
@@ -137,10 +139,16 @@ export class PetBrain {
         void (async () => {
             try {
                 if (!first) await this.stopWhereYouAre();
+                // 밥이 담겨 있으면 먼저 먹는다 (자거나 아플 때는 그릇에 남겨 둔다)
+                const eat = this.env.bowlFull() && m !== 'sleep' && m !== 'sick';
+                if (eat) {
+                    await this.settle(t);
+                    await this.meal(t);
+                }
                 if (isRest(m)) {
                     await this.rest(m, t);
                 } else {
-                    await this.settle(t);
+                    if (!eat) await this.settle(t);
                     await this.live(t);
                 }
             } catch (e) {
@@ -381,6 +389,33 @@ export class PetBrain {
         await this.wait(400, t);
         await this.dip(3, 140, 1, t);
         await this.wag(2, t);
+    }
+
+    // 밥그릇에 밥을 받았을 때: 달려가서 냠냠 먹고 기뻐한다
+    private async meal(t: number) {
+        const [x, z] = this.near(BOWL.x, BOWL.z, 4.5);
+        await this.walkTo(x, z, t, this.cfg.speed * 1.3);
+        await this.faceToward(BOWL.x, BOWL.z, t);
+        this.env.effect('😋');
+        for (let i = 0; i < 3; i++) {
+            await this.dip(3, 150, 1, t);
+            await this.wait(250, t);
+        }
+        this.env.ate();
+        await this.wait(300, t);
+        await this.turnTo(FACE_CAMERA, t);
+        this.env.effect('💕');
+        await this.hop(2, t);
+        await this.hop(2, t);
+        await this.wag(3, t);
+    }
+
+    /** 밥그릇에 밥을 담았다 */
+    feed() {
+        if (!this.started || this.disposed) return;
+        const m = this.current;
+        if (m === 'sleep' || m === 'sick') return;   // 깨거나 나으면 먹는다
+        this.restart(false);
     }
 
     private async happy(t: number) {
