@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "gomTamagotchi",
+    "slug": "gom-tamagotchi",
+    "version": "1.0.0",
+    "scheme": "gomtamagotchi",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fffaf2"
+    },
+    "android": {
+      "package": "com.guom0625.gomtamagotchi",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffe9a8"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store"
+    ]
+  }
+}
