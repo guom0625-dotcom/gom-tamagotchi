@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable, TextInput } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '../components/Button';
 import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
@@ -7,15 +7,53 @@ import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 /** 아직 숙제앱과 연결되지 않음 — 가입·로그인 화면은 없고 숙제앱 버튼으로만 들어온다 */
 export function UnlinkedScreen() {
     const linkError = useAuthStore(s => s.linkError);
+    const linkWithCode = useAuthStore(s => s.linkWithCode);
+
+    // 숨은 입력칸: 알을 빠르게 5번 누르면 연결 코드를 직접 넣을 수 있다 (숙제앱 없이 시험할 때)
+    const taps = React.useRef<number[]>([]);
+    const [manual, setManual] = React.useState(false);
+    const [code, setCode] = React.useState('');
+    const [busy, setBusy] = React.useState(false);
+    const tapEgg = () => {
+        const now = Date.now();
+        taps.current = [...taps.current.filter(t => now - t < 3000), now];
+        if (taps.current.length >= 5) setManual(true);
+    };
+    const clean = code.trim().toLowerCase();
+    const valid = /^[0-9a-f]{32}$/.test(clean);
+    const submit = async () => {
+        setBusy(true);
+        await linkWithCode(clean);
+        setBusy(false);
+    };
+
     return (
         <View style={styles.wrap}>
-            <Text style={styles.egg}>🥚</Text>
+            <Pressable onPress={tapEgg} hitSlop={12}>
+                <Text style={styles.egg}>🥚</Text>
+            </Pressable>
             <Text style={styles.title}>gomTamagotchi</Text>
             <View style={styles.card}>
                 <Text style={styles.body}>숙제앱에서{'\n'}<Text style={styles.strong}>🐣 다마고치</Text> 버튼을 눌러 주세요</Text>
                 <Text style={styles.sub}>숙제앱 계정으로 바로 들어와요</Text>
             </View>
             {linkError && <Text style={styles.error}>{linkError}</Text>}
+            {manual && (
+                <View style={styles.manual}>
+                    <TextInput
+                        style={styles.input}
+                        value={code}
+                        onChangeText={setCode}
+                        placeholder="연결 코드"
+                        placeholderTextColor={colors.ink[300]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                    {busy
+                        ? <ActivityIndicator color={colors.ink[500]} />
+                        : <Button variant="ocean" size="sm" label="연결" onPress={submit} disabled={!valid} style={{ alignSelf: 'center' }} />}
+                </View>
+            )}
         </View>
     );
 }
@@ -84,6 +122,18 @@ const styles = StyleSheet.create({
         fontFamily: fontFamilies.body,
         fontSize: fontSizes.sm,
         color: colors.ink[500],
+    },
+    manual: { width: '100%', gap: 10 },
+    input: {
+        backgroundColor: colors.card,
+        borderRadius: radius.md,
+        borderWidth: 1.5,
+        borderColor: colors.ink[200],
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        fontFamily: fontFamilies.num,
+        fontSize: fontSizes.md,
+        color: colors.ink[900],
     },
     error: {
         fontFamily: fontFamilies.bodyMed,
