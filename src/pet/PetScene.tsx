@@ -1,13 +1,13 @@
 // 펫의 방 — 벽·바닥·소품을 그리고, 그 안에서 펫이 혼자 논다. 펫을 누르거나 부르기 버튼을 누르면 쳐다본다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { G, Line, Polygon } from 'react-native-svg';
 import { C, renderPart, shade, type Part } from './voxel';
-import { BEAR } from './bear';
+import { bearModel, type Expr } from './bear';
 import { PetView, makePetAnims } from './PetView';
-import { PetBrain } from './brain';
+import { PetBrain, type PetMode } from './brain';
 import {
-    makeSceneLayout, floorPoint, ROOM, WALL_H, CUSHION, BOWL, BALL_PART, BALL_START, type SceneLayout,
+    makeSceneLayout, floorPoint, ROOM, WALL_H, CUSHION, BOWL, BALL_PART, BALL_START, POOP_PART, LETTER_PART, type SceneLayout,
 } from './room';
 
 const WALL = '#efe4d0';
@@ -15,24 +15,34 @@ const FLOOR = '#e2c79f';
 /** 방에 비해 펫 크기 (나중에 아기·어린이·어른 단계별로 바꾼다) */
 const PET_SCALE = 0.8;
 
+export interface Poop { id: string; x: number; z: number }
+
 interface Props {
+    mode: PetMode;
+    poops: Poop[];
+    gone?: boolean;                       // 떠나고 편지만 남음
+    onClean?: (id: string) => void;       // 똥을 톡 눌러 치움
     /** 부르기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     callRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-export function PetScene({ callRef }: Props) {
+export function PetScene(props: Props) {
     const [width, setWidth] = useState(0);
     const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
     return (
         <View onLayout={onLayout} style={{ width: '100%' }}>
-            {width > 0 && <Room key={width} layout={makeSceneLayout(width)} callRef={callRef} />}
+            {width > 0 && <Room key={`${width}:${props.gone ? 'gone' : 'pet'}`} layout={makeSceneLayout(width)} {...props} />}
         </View>
     );
 }
 
-function Room({ layout: l, callRef }: { layout: SceneLayout; callRef?: Props['callRef'] }) {
+function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layout: SceneLayout }) {
     const a = useMemo(makePetAnims, []);
     const [yaw, setYaw] = useState(0);
+    const [expr, setExpr] = useState<Expr>('normal');
+    const poopsRef = useRef(poops);
+    poopsRef.current = poops;
+    const [sparkles, setSparkles] = useState<{ id: string; at: [number, number] }[]>([]);
     const [petDepth, setPetDepth] = useState(30);
     const [ballDepth, setBallDepth] = useState(BALL_START.x + BALL_START.z);
     const [effects, setEffects] = useState<{ id: number; emoji: string }[]>([]);
@@ -47,7 +57,9 @@ function Room({ layout: l, callRef }: { layout: SceneLayout; callRef?: Props['ca
     const brain = useMemo(() => new PetBrain(a, {
         layout: l,
         setYaw,
+        setExpr,
         setPetDepth,
+        poops: () => poopsRef.current,
         effect: emoji => setEffects(list => [...list.slice(-3), { id: ++effectId.current, emoji }]),
         moveBall: (x, z, ms) => new Promise(res => {
             const [sx, sy] = floorPoint(l, x, z);
@@ -64,14 +76,21 @@ function Room({ layout: l, callRef }: { layout: SceneLayout; callRef?: Props['ca
     }), [a, l, ball]);
 
     useEffect(() => {
+        if (gone) return;
         brain.ball = { x: BALL_START.x, z: BALL_START.z };
-        brain.start();
+        brain.start(mode);
         if (callRef) callRef.current = () => { void brain.call(); };
         return () => {
             brain.dispose();
             if (callRef) callRef.current = null;
         };
-    }, [brain, callRef]);
+    }, [brain, callRef, gone]);
+    useEffect(() => { brain.setMode(mode); }, [brain, mode]);
+
+    const clean = (p: Poop) => {
+        setSparkles(list => [...list, { id: p.id, at: floorPoint(l, p.x, p.z, 2) }]);
+        onClean?.(p.id);
+    };
 
     const cushionAt = useMemo(() => floorPoint(l, CUSHION.x, CUSHION.z), [l]);
     const bowlAt = useMemo(() => floorPoint(l, BOWL.x, BOWL.z), [l]);
@@ -91,9 +110,14 @@ function Room({ layout: l, callRef }: { layout: SceneLayout; callRef?: Props['ca
                 </Animated.View>
             ),
         },
-        {
+        ...poops.map(p => ({
+            depth: p.x + p.z, el: <PoopView key={p.id} p={p} l={l} onPress={() => clean(p)} />,
+        })),
+        gone ? {
+            depth: 30, el: <PropView key="letter" part={LETTER_PART} at={floorPoint(l, 15, 15)} kv={l.kv} />,
+        } : {
             depth: petDepth + 0.5, el: (
-                <PetView key="pet" model={BEAR} modelKey="bear" yawIdx={yaw} kv={l.kv * PET_SCALE} a={a} onPress={() => { void brain.call(); }}>
+                <PetView key="pet" model={bearModel(expr)} modelKey={`bear-${expr}`} yawIdx={yaw} kv={l.kv * PET_SCALE} a={a} onPress={() => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}
@@ -107,6 +131,11 @@ function Room({ layout: l, callRef }: { layout: SceneLayout; callRef?: Props['ca
         <View style={{ width: l.width, height: l.height }}>
             <RoomShell l={l} />
             {things.map(t => t.el)}
+            {sparkles.map(sp => (
+                <View key={sp.id} pointerEvents="none" style={{ position: 'absolute', left: sp.at[0], top: sp.at[1] }}>
+                    <Effect emoji="✨" onDone={() => setSparkles(list => list.filter(x => x.id !== sp.id))} />
+                </View>
+            ))}
         </View>
     );
 }
@@ -164,6 +193,19 @@ const PropView = React.memo(function PropView({ part, at, kv, center }: { part: 
         </Svg>
     );
 });
+
+// 똥 한 개 — 톡 누르면 치운다
+function PoopView({ p, l, onPress }: { p: Poop; l: SceneLayout; onPress: () => void }) {
+    const at = useMemo(() => floorPoint(l, p.x, p.z), [l, p.x, p.z]);
+    const size = 5 * l.kv;
+    return (
+        <>
+            <PropView part={POOP_PART} at={at} kv={l.kv} />
+            <Pressable onPress={onPress} hitSlop={8}
+                style={{ position: 'absolute', left: at[0] - size / 2, top: at[1] - size * 0.75, width: size, height: size }} />
+        </>
+    );
+}
 
 // 머리 위로 떠올랐다 사라지는 그림 (💕, ❗, 💤)
 function Effect({ emoji, onDone }: { emoji: string; onDone: () => void }) {

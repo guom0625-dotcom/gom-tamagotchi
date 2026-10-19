@@ -22,13 +22,15 @@ export interface PetAnims {
     earR: Animated.Value;
     tail: Animated.Value;     // -1 ~ 1 꼬리 흔들기
     wave: Animated.Value;     // 0 ~ 1 손 흔들기 (팔 들기)
+    droop: Animated.Value;    // 0 ~ 1 귀가 축 처짐 (우울·배고픔·아픔)
+    shiver: Animated.Value;   // -1 ~ 1 몸 떨기 (아픔)
 }
 
 export function makePetAnims(): PetAnims {
     const v = (n = 0) => new Animated.Value(n);
     return {
         posX: v(), posY: v(), hop: v(), breath: v(), walk: v(), sit: v(), headDip: v(), headTilt: v(),
-        eyes: v(1), earL: v(), earR: v(), tail: v(), wave: v(),
+        eyes: v(1), earL: v(), earR: v(), tail: v(), wave: v(), droop: v(), shiver: v(),
     };
 }
 
@@ -79,8 +81,14 @@ export function PetView({ model, modelKey, yawIdx, kv, a, children, onPress }: P
             armR: Animated.add(swing.interpolate({ inputRange: [-1, 1], outputRange: [16, -16] }),
                 a.wave.interpolate({ inputRange: [0, 1], outputRange: [0, 150] }))
                 .interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] }),
-            earL: deg(a.earL, 18),
-            earR: deg(a.earR, 18),
+            // 쫑긋(±18°)에 처짐(바깥으로 35°)을 더한다
+            earL: Animated.add(a.earL.interpolate({ inputRange: [-1, 1], outputRange: [-18, 18] }),
+                a.droop.interpolate({ inputRange: [0, 1], outputRange: [0, 35] }))
+                .interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] }),
+            earR: Animated.add(a.earR.interpolate({ inputRange: [-1, 1], outputRange: [-18, 18] }),
+                a.droop.interpolate({ inputRange: [0, 1], outputRange: [0, -35] }))
+                .interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] }),
+            shiverX: a.shiver.interpolate({ inputRange: [-1, 1], outputRange: [-0.35 * u, 0.35 * u] }),
             tail: deg(a.tail, 25),
             eyes: a.eyes.interpolate({ inputRange: [0, 1], outputRange: [0.12, 1] }),
             containerY: Animated.add(a.posY, a.hop),
@@ -126,7 +134,7 @@ export function PetView({ model, modelKey, yawIdx, kv, a, children, onPress }: P
     return (
         <Animated.View pointerEvents="box-none" style={{
             position: 'absolute', left: -cv.ox, top: -cv.oy, width: cv.width, height: cv.height,
-            transform: [{ translateX: a.posX }, { translateY: t.containerY }],
+            transform: [{ translateX: Animated.add(a.posX, t.shiverX) }, { translateY: t.containerY }],
         }}>
             {/* 그림자 — 폴짝 뛰어도 바닥에 남는다 */}
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateY: Animated.multiply(a.hop, -1) }] }]}>

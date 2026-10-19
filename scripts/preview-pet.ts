@@ -1,12 +1,16 @@
 // 펫 미리보기 — 여러 방향으로 그려 PNG 로 저장한다 (앱과 같은 그리기 코드).
-// 실행: npx tsx scripts/preview-pet.ts out.png 10 12 14 0 6   (숫자 = 방향 번호 0~15, 10 = 정면)
+// 실행: npx tsx scripts/preview-pet.ts out.png 10 12 14 0 6        (숫자 = 방향 번호 0~15, 10 = 정면)
+//       npx tsx scripts/preview-pet.ts out.png happy sad angry 10   (표정 이름을 섞으면 표정 x 방향으로 그린다)
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { BEAR } from '../src/pet/bear';
+import { bearModel, type Expr } from '../src/pet/bear';
 import { petLayers, FACE_CAMERA } from '../src/pet/layers';
 
 const out = process.argv[2];
-const idxs = process.argv.slice(3).map(Number);
+const args = process.argv.slice(3);
+const exprs = (args.filter(a => isNaN(Number(a))) as Expr[]);
+const dirs = args.filter(a => !isNaN(Number(a))).map(Number);
+const idxs: [Expr, number][] = (exprs.length ? exprs : ['normal' as Expr]).flatMap(e => (dirs.length ? dirs : [10]).map(d => [e, d] as [Expr, number]));
 const KV = 12, CW = 180, CH = 240;
 const W = CW * idxs.length, H = CH;
 const px = new Uint8Array(W * H * 3).fill(250);
@@ -23,8 +27,8 @@ function fill(poly: [number, number][], c: number[]) {
       if (inside) px.set(c, (y * W + x) * 3);
     }
 }
-idxs.forEach((idx, n) => {
-  const L = petLayers(BEAR, 'bear', idx, KV);
+idxs.forEach(([expr, idx], n) => {
+  const L = petLayers(bearModel(expr), 'bear-' + expr, idx, KV);
   const ox = n * CW + CW / 2, oy = CH - 50;
   const draw = (id: keyof typeof L.parts) => {
     for (const p of L.parts[id].polys) fill(p.points.split(' ').map(s => { const [a, b] = s.split(',').map(Number); return [a + ox, b + oy] as [number, number]; }), hex(p.fill));
