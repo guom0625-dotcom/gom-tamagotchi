@@ -29,9 +29,11 @@ interface Props {
 export function PetScene(props: Props) {
     const [width, setWidth] = useState(0);
     const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
+    // 화면이 다시 그려질 때마다 새 배치를 만들면 펫이 처음부터 다시 시작된다
+    const layout = useMemo(() => makeSceneLayout(width), [width]);
     return (
         <View onLayout={onLayout} style={{ width: '100%' }}>
-            {width > 0 && <Room key={`${width}:${props.gone ? 'gone' : 'pet'}`} layout={makeSceneLayout(width)} {...props} />}
+            {width > 0 && <Room key={`${width}:${props.gone ? 'gone' : 'pet'}`} layout={layout} {...props} />}
         </View>
     );
 }
@@ -85,7 +87,7 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean }: Props & { layo
             if (callRef) callRef.current = null;
         };
     }, [brain, callRef, gone]);
-    useEffect(() => { brain.setMode(mode); }, [brain, mode]);
+    useEffect(() => { if (!gone) brain.setMode(mode); }, [brain, mode, gone]);
 
     const clean = (p: Poop) => {
         setSparkles(list => [...list, { id: p.id, at: floorPoint(l, p.x, p.z, 2) }]);

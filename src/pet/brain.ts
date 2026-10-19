@@ -78,6 +78,7 @@ export class PetBrain {
     private timers: Record<string, ReturnType<typeof setTimeout>> = {};
     private eyesBusy = false;
     private disposed = false;
+    private started = false;
     private taps: number[] = [];
     private pokeAngryUntil = 0;
 
@@ -85,6 +86,7 @@ export class PetBrain {
 
     // ── 시작 / 끝 ──────────────────────────────
     start(mode: PetMode) {
+        this.started = true;
         this.mode = mode;
         // 자는 시간에 앱을 열었으면 처음부터 쿠션 위에 있다
         if (mode === 'sleep') this.placeAt(CUSHION.x, CUSHION.z); else this.placeAt(this.x, this.z);
@@ -102,7 +104,7 @@ export class PetBrain {
 
     /** 기분·상태가 바뀌었다 */
     setMode(mode: PetMode) {
-        if (this.disposed || mode === this.mode) return;
+        if (!this.started || this.disposed || mode === this.mode) return;
         this.mode = mode;
         this.restart(false);
     }
