@@ -8,10 +8,13 @@ import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
 import {
     makeSceneLayout, floorPoint, poopSpot, WALL_H, CUSHION_PART, BOWL_PART, BOWL_FULL_PART, BALL_PART, POOP_PART, LETTER_PART, EGG_PART,
-    type SceneLayout,
+    DOLL_PART, BUBBLES_PART, TUNNEL_PART, SLIDE_PART, RUG_PART, PLANT_PART, CUSHION_BLUE_PART, WALLPAPERS, TOY_KEYS,
+    ROBOT_PART, FEEDER_PART, FIRSTAID_PART, BED_PART, GADGET_KEYS,
+    type SceneLayout, type ToyKey,
 } from './room';
 
 const WALL = '#efe4d0';
+const GADGET_PARTS = { robot: ROBOT_PART, feeder: FEEDER_PART, firstaid: FIRSTAID_PART, bed: BED_PART };
 const FLOOR = '#e2c79f';
 export type Stage = 'egg' | 'baby' | 'teen' | 'adult';
 /** 단계별 펫 크기 (방 칸 기준). 방도 넓어지니 화면에서는 이보다 덜 커 보인다 */
@@ -22,7 +25,17 @@ export interface Poop { id: string; u: number; v: number }
 type PlacedPoop = { id: string; x: number; z: number };
 
 /** 바깥(버튼)에서 펫에게 시키는 일 */
-export interface PetControl { call: () => void; pat: () => void }
+export interface PetControl {
+    call: () => void;
+    pat: () => void;
+    snack: (emoji: string) => void;
+    medicine: () => void;
+    hospital: () => void;
+}
+
+/** 방 꾸미기: 방에 꺼내 놓은 장난감·가구·능력 물건 키, 붙인 벽지·쿠션 */
+export interface RoomDecor { items: string[]; wallpaper: string | null; cushion: string | null }
+const NO_DECOR: RoomDecor = { items: [], wallpaper: null, cushion: null };
 
 interface Props {
     mode: PetMode;
@@ -33,6 +46,7 @@ interface Props {
     onClean?: (id: string) => void;       // 똥을 톡 눌러 치움
     bowlFull?: boolean;                   // 밥그릇에 밥이 담겨 있다
     onAte?: () => void;                   // 펫이 밥을 다 먹었다
+    decor?: RoomDecor;
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
 }
@@ -50,7 +64,7 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
@@ -69,6 +83,16 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     const [effects, setEffects] = useState<{ id: number; emoji: string }[]>([]);
     const effectId = useRef(0);
     const effect = (emoji: string) => setEffects(list => [...list.slice(-3), { id: ++effectId.current, emoji }]);
+    // 방 안 아무 데나 떠오르는 그림 (비눗방울 등)
+    const [floats, setFloats] = useState<{ id: number; at: [number, number]; emoji: string }[]>([]);
+    const [hidden, setHidden] = useState(false);
+    const [away, setAway] = useState(false);
+    const toys = useMemo(() => TOY_KEYS.filter(k => decor.items.includes(k)), [decor.items]);
+    const toysRef = useRef<ToyKey[]>(toys);
+    toysRef.current = toys;
+    // 돌아다닐 때 피할 물건 (장난감은 brain 이 따로 안다)
+    const obstaclesRef = useRef<{ x: number; z: number; r: number }[]>([]);
+    obstaclesRef.current = GADGET_KEYS.filter(k => decor.items.includes(k)).map(k => R.gadgets[k]);
 
     // 공 위치와 굴러가는 회전
     const ball = useMemo(() => {
@@ -85,6 +109,10 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         bowlFull: () => bowlRef.current,
         ate: () => { bowlRef.current = false; onAteRef.current?.(); },
         effect,
+        toys: () => toysRef.current,
+        obstacles: () => obstaclesRef.current,
+        setHidden,
+        effectAt: (x, z, y, emoji) => setFloats(list => [...list.slice(-5), { id: ++effectId.current, at: floorPoint(l, x, z, y), emoji }]),
         moveBall: (x, z, ms) => new Promise(res => {
             const [sx, sy] = floorPoint(l, x, z);
             const dist = Math.hypot(x - ball.pos.x, z - ball.pos.z);
@@ -110,14 +138,27 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     useEffect(() => {
         if (gone) return;
         if (egg) {
-            if (ctrlRef) ctrlRef.current = { call: () => shakeEgg(false), pat: () => shakeEgg(true) };
+            const none = () => {};
+            if (ctrlRef) ctrlRef.current = { call: () => shakeEgg(false), pat: () => shakeEgg(true), snack: none, medicine: none, hospital: none };
             // 가끔 혼자 꿈틀
             const id = setInterval(() => { if (Math.random() < 0.5) shakeEgg(false); }, 4000);
             return () => { clearInterval(id); if (ctrlRef) ctrlRef.current = null; };
         }
         brain.start(mode);
-        if (ctrlRef) ctrlRef.current = { call: () => { void brain.call(); }, pat: () => { void brain.pat(); } };
+        let awayTimer: ReturnType<typeof setTimeout> | undefined;
+        if (ctrlRef) ctrlRef.current = {
+            call: () => { void brain.call(); },
+            pat: () => { void brain.pat(); },
+            snack: emoji => { void brain.snack(emoji); },
+            medicine: () => { void brain.medicine(); },
+            hospital: () => {
+                // 🚑 뜬 뒤 잠깐 방을 비운다 (brain.hospital 과 시간을 맞춘다)
+                awayTimer = setTimeout(() => { setAway(true); awayTimer = setTimeout(() => setAway(false), 3500); }, 500);
+                void brain.hospital();
+            },
+        };
         return () => {
+            clearTimeout(awayTimer);
             brain.dispose();
             if (ctrlRef) ctrlRef.current = null;
         };
@@ -134,13 +175,26 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     const eggAt = useMemo(() => floorPoint(l, R.cushion.x, R.cushion.z, 1.2), [l]);
     const bowlAt = useMemo(() => floorPoint(l, R.bowl.x, R.bowl.z), [l]);
     const origin = useMemo<[number, number]>(() => [0, 0], []);
+    const at = (s: { x: number; z: number }) => floorPoint(l, s.x, s.z);
+    const T = R.toys;
+    const has = (k: string) => decor.items.includes(k);
 
     // 소품·공·펫을 뒤(작은 x + z)부터 그린다
     // 납작하고 넓은 물건은 가운데로 비교하면 위에 올라선 펫을 덮는다.
     // 쿠션·편지는 바닥 깔개처럼 늘 맨 아래, 밥그릇·똥은 뒤쪽 가장자리로 비교한다
     const FLOOR = -100;
     const things: { depth: number; el: React.ReactNode }[] = [
-        { depth: FLOOR, el: <PropView key="cushion" part={CUSHION_PART} at={cushionAt} kv={l.kv} /> },
+        ...(has('rug') ? [{ depth: FLOOR - 1, el: <PropView key="rug" part={RUG_PART} at={at(R.rug)} kv={l.kv} /> }] : []),
+        { depth: FLOOR, el: <PropView key="cushion" part={decor.cushion === 'cushion_blue' ? CUSHION_BLUE_PART : CUSHION_PART} at={cushionAt} kv={l.kv} /> },
+        ...(has('plant') ? [{ depth: R.plant.x + R.plant.z, el: <PropView key="plant" part={PLANT_PART} at={at(R.plant)} kv={l.kv} /> }] : []),
+        ...(has('doll') ? [{ depth: T.doll.x + T.doll.z - 1, el: <PropView key="doll" part={DOLL_PART} at={at(T.doll)} kv={l.kv} /> }] : []),
+        ...(has('bubbles') ? [{ depth: T.bubbles.x + T.bubbles.z - 1.5, el: <PropView key="bubbles" part={BUBBLES_PART} at={at(T.bubbles)} kv={l.kv} /> }] : []),
+        ...(has('tunnel') ? [{ depth: T.tunnel.x + T.tunnel.z, el: <PropView key="tunnel" part={TUNNEL_PART} at={at(T.tunnel)} kv={l.kv} /> }] : []),
+        ...(has('slide') ? [{ depth: T.slide.x + T.slide.z, el: <PropView key="slide" part={SLIDE_PART} at={at(T.slide)} kv={l.kv} /> }] : []),
+        ...GADGET_KEYS.filter(has).map(k => ({
+            depth: R.gadgets[k].x + R.gadgets[k].z - (k === 'bed' ? 2 : 1),
+            el: <PropView key={k} part={GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} />,
+        })),
         { depth: R.bowl.x + R.bowl.z - 5.2, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL_PART} at={bowlAt} kv={l.kv} /> },
         {
             depth: ballDepth, el: (
@@ -165,6 +219,8 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
                     ))}
                 </EggView>
             ),
+        } : hidden ? {
+            depth: FLOOR, el: null,
         } : {
             depth: petDepth + 0.5, el: (
                 <PetView key="pet" model={bearModel(expr)} modelKey={`bear-${expr}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
@@ -179,35 +235,66 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
 
     return (
         <View style={{ width: l.width, height: l.height }}>
-            <RoomShell l={l} />
+            <RoomShell l={l} wallpaper={decor.wallpaper} curtain={has('curtain')} />
             {things.map(t => t.el)}
             {sparkles.map(sp => (
                 <View key={sp.id} pointerEvents="none" style={{ position: 'absolute', left: sp.at[0], top: sp.at[1] }}>
                     <Effect emoji="✨" onDone={() => setSparkles(list => list.filter(x => x.id !== sp.id))} />
                 </View>
             ))}
+            {floats.map(f => (
+                <View key={f.id} pointerEvents="none" style={{ position: 'absolute', left: f.at[0], top: f.at[1] }}>
+                    <Effect emoji={f.emoji} onDone={() => setFloats(list => list.filter(x => x.id !== f.id))} />
+                </View>
+            ))}
+            {away && (
+                <View pointerEvents="none" style={styles.awayWrap}>
+                    <Animated.Text style={styles.away}>🏥 병원에 다녀오는 중…</Animated.Text>
+                </View>
+            )}
         </View>
     );
 }
 
 // 벽·바닥 (움직이지 않는다)
-const RoomShell = React.memo(function RoomShell({ l }: { l: SceneLayout }) {
+const RoomShell = React.memo(function RoomShell({ l, wallpaper, curtain }: { l: SceneLayout; wallpaper: string | null; curtain: boolean }) {
     const P = (x: number, y: number, z: number) => floorPoint(l, x, z, y).join(',');
     const poly = (pts: [number, number, number][]) => pts.map(([x, y, z]) => P(x, y, z)).join(' ');
     const S = l.room.size, H = WALL_H, T = 1.2;
     const wx = Math.round(S / 2);   // 창문 왼쪽 끝
+    const wp = wallpaper ? WALLPAPERS[wallpaper] : undefined;
+    const wall = wp?.base ?? WALL;
+    // 벽지 무늬: 세로 줄무늬 또는 물방울 (오른쪽 벽 z=0, 왼쪽 벽 x=0)
+    const pattern: string[] = [];
+    if (wp?.kind === 'stripe') {
+        for (let i = 1; i < S; i += 2.5) {
+            pattern.push(poly([[i, 0, 0], [i + 1, 0, 0], [i + 1, H, 0], [i, H, 0]]), poly([[0, 0, i], [0, 0, i + 1], [0, H, i + 1], [0, H, i]]));
+        }
+    } else if (wp?.kind === 'dot') {
+        for (let i = 2; i < S; i += 3) for (let y = 2 + (i % 2); y < H; y += 3) {
+            pattern.push(poly([[i, y, 0], [i + 0.6, y, 0], [i + 0.6, y + 0.6, 0], [i, y + 0.6, 0]]), poly([[0, y, i], [0, y, i + 0.6], [0, y + 0.6, i + 0.6], [0, y + 0.6, i]]));
+        }
+    }
     const grid: [string, string][] = [];
     for (let i = 5; i < S; i += 5) {
         grid.push([P(i, 0, 0), P(i, 0, S)], [P(0, 0, i), P(S, 0, i)]);
     }
     return (
         <Svg width={l.width} height={l.height} style={StyleSheet.absoluteFill}>
-            <Polygon points={poly([[0, 0, 0], [S, 0, 0], [S, H, 0], [0, H, 0]])} fill={WALL} />
-            <Polygon points={poly([[0, 0, 0], [0, 0, S], [0, H, S], [0, H, 0]])} fill={shade(WALL, 0.92)} />
+            <Polygon points={poly([[0, 0, 0], [S, 0, 0], [S, H, 0], [0, H, 0]])} fill={wall} />
+            <Polygon points={poly([[0, 0, 0], [0, 0, S], [0, H, S], [0, H, 0]])} fill={shade(wall, 0.92)} />
+            {wp && pattern.map((pts, i) => <Polygon key={`p${i}`} points={pts} fill={i % 2 ? shade(wp.pattern, 0.95) : wp.pattern} />)}
             {/* 창문 (오른쪽 벽) */}
             <Polygon points={poly([[wx, 4, 0], [wx + 9, 4, 0], [wx + 9, 10.5, 0], [wx, 10.5, 0]])} fill="#ffffff" />
             <Polygon points={poly([[wx + 0.6, 4.6, 0], [wx + 8.4, 4.6, 0], [wx + 8.4, 9.9, 0], [wx + 0.6, 9.9, 0]])} fill="#bfe3ff" />
             <Polygon points={poly([[wx + 4.3, 4.6, 0], [wx + 4.7, 4.6, 0], [wx + 4.7, 9.9, 0], [wx + 4.3, 9.9, 0]])} fill="#ffffff" />
+            {curtain && <>
+                <Polygon points={poly([[wx - 1.2, 11, 0], [wx + 10.2, 11, 0], [wx + 10.2, 11.4, 0], [wx - 1.2, 11.4, 0]])} fill="#a0785a" />
+                <Polygon points={poly([[wx - 1, 3.2, 0], [wx + 1.6, 3.2, 0], [wx + 1.6, 11, 0], [wx - 1, 11, 0]])} fill="#f4a6b8" />
+                <Polygon points={poly([[wx + 7.4, 3.2, 0], [wx + 10, 3.2, 0], [wx + 10, 11, 0], [wx + 7.4, 11, 0]])} fill="#f4a6b8" />
+                <Polygon points={poly([[wx + 0.2, 3.2, 0], [wx + 0.5, 3.2, 0], [wx + 0.5, 11, 0], [wx + 0.2, 11, 0]])} fill="#e88ea3" />
+                <Polygon points={poly([[wx + 8.6, 3.2, 0], [wx + 8.9, 3.2, 0], [wx + 8.9, 11, 0], [wx + 8.6, 11, 0]])} fill="#e88ea3" />
+            </>}
             {/* 액자 (왼쪽 벽) */}
             <Polygon points={poly([[0, 6, 8], [0, 6, 14], [0, 10, 14], [0, 10, 8]])} fill="#c99f74" />
             <Polygon points={poly([[0, 6.5, 8.6], [0, 6.5, 13.4], [0, 9.5, 13.4], [0, 9.5, 8.6]])} fill="#ffe9a8" />
@@ -294,6 +381,11 @@ function Effect({ emoji, onDone }: { emoji: string; onDone: () => void }) {
 }
 
 const styles = StyleSheet.create({
+    awayWrap: { position: 'absolute', left: 0, right: 0, top: '40%', alignItems: 'center' },
+    away: {
+        backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8,
+        fontSize: 15, color: '#3a4254', overflow: 'hidden',
+    },
     effect: { position: 'absolute', left: -14, top: -24, width: 28, textAlign: 'center', fontSize: 22 },
 });
 

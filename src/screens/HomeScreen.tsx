@@ -7,31 +7,11 @@ import { Price } from '../components/Price';
 import { Button } from '../components/Button';
 import { TopazExchangeModal } from '../components/TopazExchangeModal';
 import { NameModal } from '../components/NameModal';
-import { PetScene, type PetControl, type Poop, type Stage } from '../pet/PetScene';
+import { ShopModal } from '../components/ShopModal';
+import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
+import type { Cond, GrowCond, PetResponse } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
-
-const FEED_PRICE = 3;
-
-type Cond = 'feed' | 'pat' | 'clean' | 'room';
-interface GrowCond { key: Cond; have: number; need: number; missed: number }
-interface PetInfo {
-    id: string;
-    species: string | null;      // 알이면 아직 모른다 (깨어날 때 정해진다)
-    name: string | null;
-    stage: Stage;
-    fed_today: boolean;
-    patted_today: boolean;
-    fullness: number;            // 0~3
-    poops: Poop[];
-    next_poop_at: number | null;
-    growth: { next: Stage | null; ready: boolean; conds: GrowCond[] };
-}
-interface PetState {
-    pet: PetInfo;
-    room: { level: number; max: number; next_price: number | null };
-}
-type PetResponse = PetState & { diamonds: number; topaz: number };
 
 const STAGE_NAME: Record<Stage, string> = { egg: '알', baby: '유아', teen: '청소년', adult: '성인' };
 const ROOM_NAME = ['작은 방', '중간 방', '큰 방'];
@@ -44,12 +24,28 @@ const ERRORS: Record<string, string> = {
     already_fed: '오늘은 벌써 밥을 먹었어요',
     already_patted: '오늘은 벌써 쓰다듬어 줬어요',
     nothing_to_clean: '치울 똥이 없어요',
-    not_ready: '아직 조건을 다 채우지 못했어요',
+    not_ready: '아직 자랄 준비가 안 됐어요',
+    sick: '아플 때는 자라지 않아요',
     max_room: '가장 큰 방이에요',
-    egg: '알은 아직 밥을 먹지 않아요',
+    egg: '알은 아직 할 수 없어요',
+    gone: '펫이 떠났어요',
+    severe: '약으로는 안 나아요. 병원에 가야 해요',
+    not_severe: '약을 먹으면 나아요',
+    already_medicine: '약은 벌써 먹었어요',
+    already_hospital: '오늘은 병원에 다녀왔어요',
+    too_many_snacks: '간식은 하루 2번까지예요',
+    room_full: '방이 꽉 찼어요. 다른 걸 창고에 넣어 주세요',
+    helper_cooldown: '돌봄 도우미는 일주일에 1번이에요',
+    no_missed_day: '채울 빠진 날이 없어요',
 };
 
-/** 연결된 뒤의 첫 화면 — 펫의 방, 돌보기, 성장, 토파즈 교환 */
+/** 잠자는 시간 (한국 시각): 밤 0~7시, 낮 9~16시. 주말도 같다 */
+function isSleepTime(now = Date.now()) {
+    const h = new Date(now + 9 * 3600_000).getUTCHours();
+    return h < 7 || (h >= 9 && h < 16);
+}
+
+/** 연결된 뒤의 첫 화면 — 펫의 방, 돌보기, 성장, 상점, 토파즈 교환 */
 export function HomeScreen() {
     const me = useAuthStore(s => s.me)!;
     const refresh = useAuthStore(s => s.refresh);
@@ -57,21 +53,23 @@ export function HomeScreen() {
     const linkError = useAuthStore(s => s.linkError);
     const insets = useSafeAreaInsets();
     const [exchangeOpen, setExchangeOpen] = useState(false);
+    const [shopOpen, setShopOpen] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const ctrl = useRef<PetControl | null>(null);
 
-    const [state, setState] = useState<PetState | null>(null);
+    const [data, setData] = useState<PetResponse | null>(null);
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [bowlFull, setBowlFull] = useState(false);
     const [naming, setNaming] = useState<'hatch' | 'rename' | null>(null);
-    const pet = state?.pet ?? null;
+    const pet = data?.pet ?? null;
     const egg = pet?.stage === 'egg';
+    const gone = !!pet?.gone;
     const speciesName = (pet?.species && SPECIES_NAME[pet.species]) || '아기';
     const petName = pet?.name ?? speciesName;
 
     const apply = useCallback((res: PetResponse) => {
-        setState({ pet: res.pet, room: res.room });
+        setData(res);
         setGems({ diamonds: res.diamonds, topaz: res.topaz });
     }, [setGems]);
 
@@ -80,8 +78,10 @@ export function HomeScreen() {
     }, [apply]);
 
     /** 서버에 일을 시키고 결과로 화면을 바꾼다. 성공하면 true */
-    const act = async (path: string, body?: object): Promise<boolean> => {
-        if (busy) return false;
+    const busyRef = useRef(false);
+    const act = useCallback(async (path: string, body?: object): Promise<boolean> => {
+        if (busyRef.current) return false;
+        busyRef.current = true;
         setBusy(true);
         setMsg(null);
         try {
@@ -93,15 +93,18 @@ export function HomeScreen() {
             void loadPet();
             return false;
         } finally {
+            busyRef.current = false;
             setBusy(false);
         }
-    };
+    }, [apply, loadPet]);
 
     const feed = async () => { if (await act('/pet/feed')) setBowlFull(true); };
     const pat = async () => { if (await act('/pet/pat')) ctrl.current?.pat(); };
+    const medicine = async () => { if (await act('/pet/medicine')) ctrl.current?.medicine(); };
+    const hospital = async () => { if (await act('/pet/hospital')) ctrl.current?.hospital(); };
     const cleanOne = (id: string) => {
         // 바로 사라지게 하고 서버에 알린다
-        setState(s => s && { ...s, pet: { ...s.pet, poops: s.pet.poops.filter(p => p.id !== id) } });
+        setData(d => d && { ...d, pet: { ...d.pet, poops: d.pet.poops.filter(p => p.id !== id) } });
         void act('/pet/clean', { id });
     };
     const grow = async () => {
@@ -114,23 +117,33 @@ export function HomeScreen() {
     // 깨어났는데 아직 이름이 없으면 (이름 짓기 창을 닫았거나 앱을 껐을 때) 한 번 더 묻는다
     const askedName = useRef(false);
     useEffect(() => {
-        if (pet && pet.stage !== 'egg' && !pet.name && !askedName.current) {
+        if (pet && pet.stage !== 'egg' && !pet.gone && !pet.name && !askedName.current) {
             askedName.current = true;
             setNaming('hatch');
         }
     }, [pet]);
 
-    // 시험판: 기분·상태를 손으로 바꿔 본다 (아이 이름을 5번 누르면 나온다). 고르지 않으면 서버 배부름을 따른다
-    const [testMode, setTestMode] = useState<PetMode | null>(null);
-    const mode: PetMode = testMode ?? (pet && pet.fullness === 0 ? 'hungry' : 'normal');
-    const [gone, setGone] = useState(false);
+    // 시험 패널 (시험 계정에서 아이 이름을 5번 누르면 나온다)
+    const tester = !!data?.tester;
     const [testOpen, setTestOpen] = useState(false);
+    const [testMode, setTestMode] = useState<PetMode | null>(null);
+    const [showConds, setShowConds] = useState(true);   // 시험 계정만: 성장 조건 숫자 보기
     const nameTaps = useRef<number[]>([]);
     const tapName = () => {
+        if (!tester) return;
         const now = Date.now();
         nameTaps.current = [...nameTaps.current.filter(t => now - t < 3000), now];
         if (nameTaps.current.length >= 5) { nameTaps.current = []; setTestOpen(o => !o); }
     };
+
+    // 잠자는 시간이 바뀌면 다시 그린다
+    const [sleeping, setSleeping] = useState(isSleepTime());
+    useEffect(() => {
+        const id = setInterval(() => setSleeping(isSleepTime()), 60_000);
+        return () => clearInterval(id);
+    }, []);
+    // 기분·상태: 아픔 > 잠 > 서버 기분 (시험 패널에서 고르면 그것)
+    const mode: PetMode = testMode ?? (!pet ? 'normal' : pet.mood === 'sick' ? 'sick' : sleeping ? 'sleep' : pet.mood);
 
     useEffect(() => { void loadPet(); }, [loadPet]);
 
@@ -140,13 +153,13 @@ export function HomeScreen() {
         return () => sub.remove();
     }, [refresh, loadPet]);
 
-    // 다음 똥이 나올 시간에 다시 읽는다
+    // 다음에 무언가 바뀌는 시각(똥·아픔·간식 끝)에 다시 읽는다
     useEffect(() => {
-        const at = pet?.next_poop_at;
+        const at = pet?.next_change_at;
         if (!at) return;
         const id = setTimeout(() => { void loadPet(); }, Math.min(Math.max(at - Date.now(), 0) + 1000, 6 * 3600_000));
         return () => clearTimeout(id);
-    }, [pet?.next_poop_at, loadPet]);
+    }, [pet?.next_change_at, loadPet]);
 
     const pull = async () => {
         setRefreshing(true);
@@ -159,6 +172,9 @@ export function HomeScreen() {
     const condValue = (c: GrowCond) =>
         c.key === 'room' ? `${ROOM_NAME[c.need]} 이상`
             : `${c.missed > 0 && c.have < c.need ? `빠진 날 ${c.missed} · ` : ''}${c.have}/${c.need}일`;
+
+    const placed = data ? data.items.filter(i => i.placed).map(i => i.key) : [];
+    const h = pet?.health;
 
     return (
         <ScrollView
@@ -176,24 +192,31 @@ export function HomeScreen() {
             {linkError && <Text style={styles.error}>{linkError}</Text>}
 
             <View style={styles.petCard}>
-                {pet && (
+                {pet && data && (
                     <Pressable disabled={egg || gone} onPress={() => setNaming('rename')} style={styles.petTitle}>
                         <Text style={styles.petName}>{egg ? '🥚 알' : `${petName} ✏️`}</Text>
-                        <Text style={styles.petStage}>{egg ? '무엇이 나올까요? ❓' : `${STAGE_NAME[pet.stage]} ${speciesName}`} · {ROOM_NAME[state!.room.level]}</Text>
+                        <Text style={styles.petStage}>
+                            {egg ? '무엇이 나올까요? ❓' : `${STAGE_NAME[pet.stage]} ${speciesName}`} · {ROOM_NAME[data.room.level]}
+                            {!egg && !gone && sleeping && pet.mood !== 'sick' ? ' · 💤' : ''}
+                        </Text>
                     </Pressable>
                 )}
-                {pet && (
-                    <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={state!.room.level}
-                        poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne} />
+                {pet && data && (
+                    <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
+                        poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
+                        decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }} />
                 )}
             </View>
 
-            {gone ? (
+            {pet && data && (gone ? (
                 <View style={styles.letter}>
-                    <Text style={styles.letterText}>✉️ {withIGa(petName)} 편지를 남겼어요{'\n'}"더 잘 돌봐 줄 주인을 찾아 떠날게요"</Text>
-                    <Button variant="sun" label="🥚 새 알 받기 (🔶20)" onPress={() => { setGone(false); setTestMode(null); }} style={{ alignSelf: 'center' }} />
+                    <Text style={styles.letterText}>
+                        ✉️ {withIGa(petName)} 편지를 남겼어요{'\n'}
+                        "{pet.gone?.reason === 'hunger' ? '배가 너무 고팠어요.' : '너무 아팠어요.'} 더 잘 돌봐 줄 주인을 찾아 떠날게요"
+                    </Text>
+                    <Button variant="sun" disabled={busy} label={`🥚 새 알 받기 🔶${data.shop.new_egg}`} onPress={() => void act('/pet/new-egg')} style={{ alignSelf: 'center' }} />
                 </View>
-            ) : pet && (
+            ) : (
                 <>
                     <View style={styles.actions}>
                         {egg ? (
@@ -205,22 +228,46 @@ export function HomeScreen() {
                                 <Button variant="grape" size="sm" disabled={pet.patted_today || busy}
                                     label={pet.patted_today ? '🤚 쓰다듬었어요' : '🤚 쓰다듬기'} onPress={pat} />
                                 <Button variant="sun" size="sm" disabled={pet.fed_today || busy}
-                                    label={pet.fed_today ? '🍚 오늘 먹었어요' : `🍚 밥 주기 🔶${FEED_PRICE}`} onPress={feed} />
+                                    label={pet.auto_fed_today ? '🍽️ 급식기가 줬어요' : pet.fed_today ? '🍚 오늘 먹었어요' : `🍚 밥 주기 🔶${data.shop.feed}`} onPress={feed} />
                                 {pet.poops.length > 0 && (
                                     <Button variant="ghost" size="sm" disabled={busy} label={`🧹 청소 (${pet.poops.length})`} onPress={() => void act('/pet/clean')} />
                                 )}
                             </>
                         )}
+                        <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
                     </View>
                     {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(pet.fullness)}{'🤍'.repeat(3 - pet.fullness)}</Text>}
                     {msg && <Text style={styles.error}>{msg}</Text>}
 
-                    {/* 성장 조건 */}
+                    {/* 아플 때 */}
+                    {h && (
+                        <View style={[styles.box, styles.sickBox]}>
+                            <Text style={styles.boxTitle}>{h.severe ? '🚑 많이 아파요! 약으로는 안 나아요' : `🤒 ${withIGa(petName)} 아파요`}</Text>
+                            {h.severe ? (
+                                <Text style={styles.condText}>🏥 병원 {h.hospital_visits}/{h.hospital_needed}일 다니기</Text>
+                            ) : (
+                                <Text style={styles.condText}>{h.med_given ? '✅' : '⬜'} 💊 약 먹기</Text>
+                            )}
+                            {h.hungry && <Text style={styles.condText}>⬜ 🍚 밥도 먹어야 나아요</Text>}
+                            {h.dirty && <Text style={styles.condText}>⬜ 🧹 똥도 치워야 나아요</Text>}
+                            {h.severe ? (
+                                <Button variant="coral" size="sm" disabled={h.visited_today || busy} style={{ alignSelf: 'center' }}
+                                    label={h.visited_today ? '🏥 오늘은 다녀왔어요' : `🏥 병원 가기 🔶${data.shop.hospital}`} onPress={hospital} />
+                            ) : !h.med_given && (
+                                <Button variant="coral" size="sm" disabled={busy} style={{ alignSelf: 'center' }}
+                                    label={`💊 약 주기 🔶${data.shop.medicine}`} onPress={medicine} />
+                            )}
+                        </View>
+                    )}
+
+                    {/* 성장 — 아이에게는 무엇이 몇 번 남았는지 보이지 않는다 */}
                     <View style={styles.box}>
-                        {pet.growth.next ? (
+                        {!pet.growth.next ? (
+                            <Text style={styles.boxTitle}>🎉 {withIGa(petName)} 다 자랐어요!</Text>
+                        ) : tester && showConds && pet.growth.conds.length > 0 ? (
                             <>
                                 <Text style={styles.boxTitle}>
-                                    {egg ? '🐣 알에서 깨어나려면' : `⬆️ ${withRo(STAGE_NAME[pet.growth.next])} 자라려면`}
+                                    {egg ? '🐣 알에서 깨어나려면' : `⬆️ ${withRo(STAGE_NAME[pet.growth.next])} 자라려면`} (시험 계정만 보임)
                                 </Text>
                                 {pet.growth.conds.map(c => {
                                     const done = c.have >= c.need;
@@ -232,51 +279,72 @@ export function HomeScreen() {
                                     );
                                 })}
                                 <Text style={styles.boxNote}>빠진 날이 이틀 쌓일 때마다 하루씩 줄어요</Text>
-                                <Button variant="coral" disabled={!pet.growth.ready || busy} style={{ alignSelf: 'center', marginTop: 4 }}
-                                    label={egg ? '🐣 깨어나게 하기' : `⬆️ ${withRo(STAGE_NAME[pet.growth.next])} 성장시키기`} onPress={grow} />
                             </>
+                        ) : pet.growth.ready ? (
+                            <Text style={styles.boxTitle}>{egg ? '🐣 알이 꿈틀꿈틀! 깨어날 것 같아요' : `✨ ${withIGa(petName)} 자랄 준비가 됐어요!`}</Text>
                         ) : (
-                            <Text style={styles.boxTitle}>🎉 {withIGa(petName)} 다 자랐어요!</Text>
+                            <>
+                                <Text style={styles.boxTitle}>{egg ? '🥚 매일 품어 주면 언젠가 깨어나요' : '🌱 매일 잘 돌봐 주면 언젠가 자라요'}</Text>
+                                {(pet.growth.room_short || pet.growth.conds.some(c => c.key === 'room' && c.have < c.need)) && (
+                                    <Text style={styles.boxNote}>🏠 방이 좁아서 더 크게 자라기 어려워요</Text>
+                                )}
+                            </>
+                        )}
+                        {pet.growth.next && pet.growth.ready && (
+                            <Button variant="coral" disabled={busy} style={{ alignSelf: 'center', marginTop: 4 }}
+                                label={egg ? '🐣 깨어나게 하기' : `⬆️ ${withRo(STAGE_NAME[pet.growth.next])} 성장시키기`} onPress={grow} />
                         )}
                     </View>
 
                     {/* 방 넓히기 */}
                     <View style={[styles.box, styles.roomBox]}>
-                        <Text style={styles.boxTitle}>🏠 {ROOM_NAME[state!.room.level]}</Text>
-                        {state!.room.next_price !== null ? (
+                        <View>
+                            <Text style={styles.boxTitle}>🏠 {ROOM_NAME[data.room.level]}</Text>
+                            <Text style={styles.boxNote}>물건 {data.room.used}/{data.room.slots}개 꺼내 놓음</Text>
+                        </View>
+                        {data.room.next_price !== null ? (
                             <Button variant="ghost" size="sm" disabled={busy}
-                                label={`${withRo(ROOM_NAME[state!.room.level + 1])} 넓히기 🔶${state!.room.next_price}`}
+                                label={`${withRo(ROOM_NAME[data.room.level + 1])} 넓히기 🔶${data.room.next_price}`}
                                 onPress={() => void act('/pet/room')} />
                         ) : (
                             <Text style={styles.boxNote}>가장 큰 방이에요</Text>
                         )}
                     </View>
                 </>
-            )}
+            ))}
 
-            {testOpen && (
+            {tester && testOpen && (
                 <View style={styles.test}>
-                    <Text style={styles.testTitle}>시험용 — 기분·상태 바꾸기</Text>
+                    <Text style={styles.testTitle}>시험용 — 화면만 바꾸기 (서버는 그대로)</Text>
                     <View style={styles.chips}>
-                        <Pressable onPress={() => setTestMode(null)} style={[styles.chip, testMode === null && styles.chipOn]}>
-                            <Text style={styles.chipText}>⚙️ 자동</Text>
-                        </Pressable>
-                        {TEST_MODES.map(([m, label]) => (
-                            <Pressable key={m} onPress={() => setTestMode(m)} style={[styles.chip, testMode === m && styles.chipOn]}>
-                                <Text style={styles.chipText}>{label}</Text>
-                            </Pressable>
+                        <Chip on={testMode === null} label="⚙️ 자동" onPress={() => setTestMode(null)} />
+                        {TEST_MODES.map(([m, label]) => <Chip key={m} on={testMode === m} label={label} onPress={() => setTestMode(m)} />)}
+                    </View>
+                    <View style={styles.chips}>
+                        <Chip on={showConds} label="📋 성장 조건 숫자 보기" onPress={() => setShowConds(v => !v)} />
+                    </View>
+                    <Text style={styles.testTitle}>시험용 — 서버 상태 바꾸기 (이 계정만)</Text>
+                    <View style={styles.chips}>
+                        {TEST_ACTIONS.map(([action, label]) => (
+                            <Chip key={action} label={label} onPress={() => void act('/pet/test', { action })} />
                         ))}
                     </View>
-                    <View style={styles.chips}>
-                        <Pressable onPress={() => setGone(g => !g)} style={[styles.chip, gone && styles.chipOn]}><Text style={styles.chipText}>✉️ 떠남</Text></Pressable>
-                    </View>
-                    <Text style={styles.testNote}>10초 안에 펫을 5번 누르면 1분 동안 화나요</Text>
+                    <Text style={styles.testNote}>
+                        하루 지나기: 날짜 기록을 하루 과거로 밀어요 (배고픔·아픔·성장 일수 확인용).{'\n'}
+                        8시간 지나기: 똥이 나오는 시간·간식 기분이 그만큼 지나요.{'\n'}
+                        잠: 밤 0~7시, 낮 9~16시에는 자동으로 자요. 위 칩으로 바꿔 볼 수 있어요.{'\n'}
+                        10초 안에 펫을 5번 누르면 1분 동안 화나요.
+                    </Text>
                 </View>
             )}
 
             <Button variant="sun" label="💎 → 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
 
             <TopazExchangeModal visible={exchangeOpen} onClose={() => setExchangeOpen(false)} />
+            {data && (
+                <ShopModal visible={shopOpen} data={data} busy={busy} act={act}
+                    onSnack={emoji => setTimeout(() => ctrl.current?.snack(emoji), 300)} onClose={() => setShopOpen(false)} />
+            )}
             <NameModal
                 visible={naming !== null}
                 title={naming === 'hatch' ? `🐣 ${withIGa(speciesName)} 태어났어요!` : '이름 바꾸기'}
@@ -288,6 +356,14 @@ export function HomeScreen() {
                 onClose={() => setNaming(null)}
             />
         </ScrollView>
+    );
+}
+
+function Chip({ label, on, onPress }: { label: string; on?: boolean; onPress: () => void }) {
+    return (
+        <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]}>
+            <Text style={styles.chipText}>{label}</Text>
+        </Pressable>
     );
 }
 
@@ -331,7 +407,8 @@ const styles = StyleSheet.create({
         gap: 8,
         ...shadows.card,
     },
-    roomBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
+    sickBox: { borderWidth: 2, borderColor: colors.coral[300] },
+    roomBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
     boxTitle: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.lg, color: colors.ink[900] },
     boxNote: { fontFamily: fontFamilies.body, fontSize: fontSizes.xs, color: colors.ink[500] },
     condRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -353,7 +430,7 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     testTitle: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.sm, color: colors.ink[500] },
-    testNote: { fontFamily: fontFamilies.body, fontSize: fontSizes.xs, color: colors.ink[500] },
+    testNote: { fontFamily: fontFamilies.body, fontSize: fontSizes.xs, color: colors.ink[500], lineHeight: 17 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     chip: {
         backgroundColor: colors.card,
@@ -387,4 +464,12 @@ export function callName(name: string): string {
 const TEST_MODES: [PetMode, string][] = [
     ['happy', '😊 좋음'], ['normal', '🙂 보통'], ['sad', '😢 우울'], ['angry', '😠 화남'],
     ['hungry', '🍚 배고픔'], ['sleep', '💤 잠'], ['sick', '🤒 아픔'],
+];
+
+// 서버 /pet/test 의 action
+const TEST_ACTIONS: [string, string][] = [
+    ['next_day', '⏩ 하루 지나기'], ['hours_8', '⏩ 8시간 지나기'], ['fill', '✅ 성장 조건 채우기'],
+    ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
+    ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],
+    ['leave', '✉️ 떠나게'], ['new_egg', '🥚 새 알 (무료)'], ['reset_items', '🧹 방·아이템 초기화'],
 ];

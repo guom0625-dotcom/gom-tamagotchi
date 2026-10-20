@@ -6,7 +6,7 @@ import type { PetAnims } from './PetView';
 import type { Expr } from './bear';
 import { yawToward, C } from './voxel';
 import { FACE_CAMERA, YAW_STEPS, yawIndex } from './layers';
-import type { SceneLayout } from './room';
+import { SLIDE_TOP, type RoomSpec, type SceneLayout, type ToyKey } from './room';
 
 export type Mood = 'happy' | 'normal' | 'sad' | 'angry';
 export type Rest = 'hungry' | 'sleep' | 'sick';
@@ -23,6 +23,10 @@ export interface BrainEnv {
     poops: () => { x: number; z: number }[];
     bowlFull: () => boolean;                         // 밥그릇에 밥이 담겨 있다
     ate: () => void;                                 // 밥을 다 먹었다 (그릇을 비운다)
+    toys: () => ToyKey[];                            // 방에 있는 장난감
+    obstacles: () => { x: number; z: number; r: number }[];   // 그 밖에 피해 다닐 물건
+    setHidden: (hidden: boolean) => void;            // 터널 속·병원에 가서 안 보일 때
+    effectAt: (x: number, z: number, y: number, emoji: string) => void;   // 방 안 아무 데나 떠오르는 그림
 }
 
 class Cancelled extends Error {}
@@ -37,7 +41,7 @@ const pick = <T,>(list: [T, number][]): T => {
 
 const native = { useNativeDriver: true };
 
-type Act = 'wander' | 'look' | 'sniff' | 'ball' | 'bowl' | 'nap' | 'happy' | 'sigh' | 'stomp';
+type Act = 'wander' | 'look' | 'sniff' | 'ball' | 'bowl' | 'nap' | 'happy' | 'sigh' | 'stomp' | 'toy';
 
 // 기분별 움직임
 const MOOD: Record<Mood, {
@@ -50,19 +54,19 @@ const MOOD: Record<Mood, {
 }> = {
     happy: {
         speed: 9, stepMs: 380, idle: [600, 1800], headBase: 0, droop: 0,
-        acts: { wander: 3, look: 1, sniff: 1, ball: 4, bowl: 1, nap: 0.5, happy: 3, sigh: 0, stomp: 0 },
+        acts: { wander: 3, look: 1, sniff: 1, ball: 4, bowl: 1, nap: 0.5, happy: 3, sigh: 0, stomp: 0, toy: 5 },
     },
     normal: {
         speed: 7, stepMs: 460, idle: [1200, 3500], headBase: 0, droop: 0,
-        acts: { wander: 4, look: 2, sniff: 2, ball: 2, bowl: 1, nap: 1, happy: 1, sigh: 0, stomp: 0 },
+        acts: { wander: 4, look: 2, sniff: 2, ball: 2, bowl: 1, nap: 1, happy: 1, sigh: 0, stomp: 0, toy: 3 },
     },
     sad: {
         speed: 3.5, stepMs: 720, idle: [3000, 6000], headBase: 0.35, droop: 1,
-        acts: { wander: 2, look: 1, sniff: 1, ball: 0, bowl: 0, nap: 1, happy: 0, sigh: 4, stomp: 0 },
+        acts: { wander: 2, look: 1, sniff: 1, ball: 0, bowl: 0, nap: 1, happy: 0, sigh: 4, stomp: 0, toy: 0.5 },
     },
     angry: {
         speed: 8, stepMs: 340, idle: [1000, 2500], headBase: 0, droop: 0,
-        acts: { wander: 3, look: 1, sniff: 0, ball: 2, bowl: 0, nap: 0, happy: 0, sigh: 0, stomp: 3 },
+        acts: { wander: 3, look: 1, sniff: 0, ball: 2, bowl: 0, nap: 0, happy: 0, sigh: 0, stomp: 3, toy: 1 },
     },
 };
 
@@ -301,7 +305,8 @@ export class PetBrain {
 
     // 소품·공·똥을 피해서 돌아다닐 곳 고르기
     private randomSpot(): [number, number] {
-        const avoid = [this.R.cushion, this.R.bowl, { ...this.ball, r: 2.5 }, ...this.env.poops().map(p => ({ ...p, r: 2 }))];
+        const avoid = [this.R.cushion, this.R.bowl, { ...this.ball, r: 2.5 }, ...this.env.poops().map(p => ({ ...p, r: 2 })),
+            ...this.env.toys().map(k => this.R.toys[k]), ...this.env.obstacles()];
         for (let i = 0; i < 20; i++) {
             const x = rand(this.R.walkMin, this.R.walkMax), z = rand(this.R.walkMin, this.R.walkMax);
             if (Math.hypot(x - this.x, z - this.z) < 5) continue;
@@ -458,8 +463,10 @@ export class PetBrain {
                     wander: this.wander.bind(this), look: this.lookAround.bind(this), sniff: this.sniff.bind(this),
                     ball: t => this.playBall(t), bowl: this.eatBowl.bind(this), nap: this.nap.bind(this),
                     happy: this.happy.bind(this), sigh: this.sigh.bind(this), stomp: this.stomp.bind(this),
+                    toy: this.playToy.bind(this),
                 };
-                const act = pick((Object.keys(acts) as Act[]).map(k => [acts[k], c.acts[k]] as [typeof acts[Act], number]));
+                const hasToy = this.env.toys().length > 0;
+                const act = pick((Object.keys(acts) as Act[]).map(k => [acts[k], k === 'toy' && !hasToy ? 0 : c.acts[k]] as [typeof acts[Act], number]));
                 await act(t);
                 await this.wait(rand(c.idle[0], c.idle[1]), t);
             }
@@ -585,6 +592,164 @@ export class PetBrain {
             await this.live(t);
         } catch (e) {
             if (!(e instanceof Cancelled)) console.warn('pet call', e);
+        }
+    }
+
+    // ── 장난감 ────────────────────────────────
+    private async playToy(t: number) {
+        const toys = this.env.toys();
+        const k = toys[Math.floor(Math.random() * toys.length)];
+        if (k === 'doll') await this.playDoll(this.R.toys.doll, t);
+        else if (k === 'bubbles') await this.playBubbles(this.R.toys.bubbles, t);
+        else if (k === 'tunnel') await this.playTunnel(this.R.toys.tunnel, t);
+        else if (k === 'slide') await this.playSlide(this.R.toys.slide, t);
+    }
+
+    // 인형: 옆에 앉아 안고 뒹군다
+    private async playDoll(d: RoomSpec['toys']['doll'], t: number) {
+        const [x, z] = this.near(d.x, d.z, 2.8);
+        await this.walkTo(x, z, t);
+        await this.faceToward(d.x, d.z, t);
+        await this.play(this.to(this.a.sit, 1, 400), t);
+        this.env.effect('💕');
+        await this.play(Animated.parallel([
+            Animated.sequence([this.to(this.a.wave, 0.7, 300), this.to(this.a.wave, 0.5, 300), this.to(this.a.wave, 0.7, 300), this.to(this.a.wave, 0, 300)]),
+            Animated.sequence([this.to(this.a.headTilt, 1, 400), this.to(this.a.headTilt, -1, 600), this.to(this.a.headTilt, 1, 600), this.to(this.a.headTilt, 0, 400)]),
+        ]), t);
+        await this.wag(3, t);
+        await this.play(this.to(this.a.sit, 0, 400), t);
+    }
+
+    // 비눗방울: 기계 앞에서 위를 보며 폴짝폴짝
+    private async playBubbles(b: RoomSpec['toys']['bubbles'], t: number) {
+        const [x, z] = this.near(b.x, b.z, 4.2);
+        await this.walkTo(x, z, t);
+        await this.faceToward(b.x, b.z, t);
+        for (let i = 0; i < 4; i++) {
+            this.env.effectAt(b.x + rand(-1.5, 1.5), b.z + rand(-1.5, 1.5), 5, '🫧');
+            await this.play(this.to(this.a.headDip, -0.4, 200), t);
+            await this.hop(1.8, t);
+            await this.turnTo((this.yaw + (i % 2 ? 2 : YAW_STEPS - 2)) % YAW_STEPS, t, 40);
+        }
+        this.env.effect('🎵');
+        await this.play(this.to(this.a.headDip, this.cfg.headBase, 200), t);
+        await this.wag(3, t);
+    }
+
+    // 터널: 앞쪽 입구로 들어가 안쪽 끝으로 나온다
+    private async playTunnel(tn: RoomSpec['toys']['tunnel'], t: number) {
+        await this.walkTo(tn.x, tn.z1 + 2.5, t);
+        await this.walkTo(tn.x, tn.z1 - 0.5, t);
+        this.env.setHidden(true);
+        try {
+            await this.wait(1300, t);
+            this.placeAt(tn.x, tn.z0 + 0.5);
+        } finally {
+            this.env.setHidden(false);
+        }
+        await this.walkTo(tn.x, tn.z0 - 2.5, t);
+        await this.turnTo(FACE_CAMERA, t);
+        this.env.effect('❗');
+        await this.hop(1.5, t);
+        await this.wag(3, t);
+    }
+
+    // 미끄럼틀: 사다리로 올라가 미끄러져 내려온다
+    private async playSlide(sl: RoomSpec['toys']['slide'], t: number) {
+        await this.walkTo(sl.x, sl.z0 - 2, t);
+        await this.faceToward(sl.x, sl.z1, t);
+        const kv = this.env.layout.kv;
+        const up = (y: number) => -y * C * kv;
+        this.env.setPetDepth(999);   // 미끄럼틀 위에서는 늘 앞에
+        try {
+            // 한 칸씩 올라간다
+            const [tx, ty] = this.screen(sl.x, sl.z0 + 0.8);
+            const steps = 4;
+            for (let i = 1; i <= steps; i++) {
+                const [sx, sy] = this.screen(sl.x, sl.z0 - 2 + (2.8 * i) / steps);
+                await this.play(Animated.parallel([
+                    this.to(this.a.hop, up(SLIDE_TOP * i / steps), 260),
+                    this.to(this.a.posX, i === steps ? tx : sx, 260), this.to(this.a.posY, i === steps ? ty : sy, 260),
+                    Animated.sequence([this.to(this.a.walk, 0.5, 130), this.to(this.a.walk, 0, 130)]),
+                ]), t);
+            }
+            await this.turnTo(FACE_CAMERA, t);
+            this.env.effect('🎵');
+            await this.wait(400, t);
+            await this.faceToward(sl.x, sl.z1 + 10, t);
+            // 쭈욱
+            const [ex, ey] = this.screen(sl.x, sl.z1 + 0.5);
+            await this.play(Animated.parallel([
+                Animated.timing(this.a.posX, { toValue: ex, duration: 650, easing: Easing.in(Easing.quad), ...native }),
+                Animated.timing(this.a.posY, { toValue: ey, duration: 650, easing: Easing.in(Easing.quad), ...native }),
+                Animated.timing(this.a.hop, { toValue: 0, duration: 650, easing: Easing.in(Easing.quad), ...native }),
+                this.to(this.a.wave, 1, 300),
+            ]), t);
+        } finally {
+            this.a.hop.setValue(0);
+            this.placeAt(sl.x, sl.z1 + 0.5);
+        }
+        await this.play(this.to(this.a.wave, 0, 200), t);
+        await this.hop(1.2, t);
+        await this.wag(4, t);
+    }
+
+    // ── 간식·약·병원 (버튼으로) ─────────────────
+    /** 간식을 받았다: 쳐다보고 냠냠 */
+    async snack(emoji: string) {
+        await this.react(async t => {
+            await this.turnTo(FACE_CAMERA, t);
+            this.env.effect(emoji);
+            await this.dip(3, 160, 0.8, t);
+            this.env.effect('😋');
+            await this.hop(1.8, t);
+            await this.wag(3, t);
+        });
+    }
+
+    /** 약을 먹었다 */
+    async medicine() {
+        await this.react(async t => {
+            await this.turnTo(FACE_CAMERA, t);
+            this.env.effect('💊');
+            await this.dip(2, 200, 0.7, t);
+            await this.wait(500, t);
+        });
+    }
+
+    /** 병원에 다녀온다: 잠깐 방을 비웠다가 돌아온다 */
+    async hospital() {
+        await this.react(async t => {
+            this.env.effect('🚑');
+            await this.wait(500, t);
+            this.env.setHidden(true);
+            try {
+                await this.wait(3500, t);
+            } finally {
+                this.env.setHidden(false);
+            }
+            await this.turnTo(FACE_CAMERA, t);
+            this.env.effect('🩹');
+            await this.wait(800, t);
+        });
+    }
+
+    /** 하던 일을 멈추고 fn 을 한 뒤, 지금 기분·상태대로 다시 산다 */
+    private async react(fn: (t: number) => Promise<void>) {
+        if (!this.started || this.disposed) return;
+        this.interrupt();
+        const t = this.token;
+        try {
+            await this.stopWhereYouAre();
+            await this.play(Animated.parallel([
+                this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.hop, 0, 100), this.to(this.a.wave, 0, 150),
+            ]), t);
+            await fn(t);
+            const cur = this.current;
+            this.env.setExpr(cur);
+            if (isRest(cur)) await this.rest(cur, t); else await this.live(t);
+        } catch (e) {
+            if (!(e instanceof Cancelled)) console.warn('pet react', e);
         }
     }
 
