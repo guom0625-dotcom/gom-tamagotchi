@@ -2,7 +2,7 @@
   "expo": {
     "name": "gomTamagotchi",
     "slug": "gom-tamagotchi",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "scheme": "gomtamagotchi",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
