@@ -38,6 +38,7 @@ const ERRORS: Record<string, string> = {
     helper_cooldown: '돌봄 도우미는 일주일에 1번이에요',
     no_missed_day: '채울 빠진 날이 없어요',
     already_owned: '벌써 가지고 있어요',
+    room_not_ready: '더 잘 돌봐 주면 방을 넓힐 수 있어요',
     not_owned: '이 옷은 지금 몸에 안 맞아요',
 };
 
@@ -288,8 +289,8 @@ export function HomeScreen() {
                         ) : (
                             <>
                                 <Text style={styles.boxTitle}>{egg ? '🥚 매일 품어 주면 언젠가 깨어나요' : '🌱 매일 잘 돌봐 주면 언젠가 자라요'}</Text>
-                                {(pet.growth.room_short || pet.growth.conds.some(c => c.key === 'room' && c.have < c.need)) && (
-                                    <Text style={styles.boxNote}>🏠 방이 좁아서 더 크게 자라기 어려워요</Text>
+                                {data.room.can_upgrade && (
+                                    <Text style={styles.boxNote}>🏠 방을 넓혀 주면 자랄 수 있어요!</Text>
                                 )}
                             </>
                         )}
@@ -304,9 +305,13 @@ export function HomeScreen() {
                         <View>
                             <Text style={styles.boxTitle}>🏠 {ROOM_NAME[data.room.level]}</Text>
                             <Text style={styles.boxNote}>물건 {data.room.used}/{data.room.slots}개 꺼내 놓음</Text>
+                            {data.room.next_price !== null && !data.room.can_upgrade && (
+                                <Text style={styles.boxNote}>잘 돌봐 주면 넓힐 수 있어요</Text>
+                            )}
                         </View>
                         {data.room.next_price !== null ? (
-                            <Button variant="ghost" size="sm" disabled={busy}
+                            // 돌봄 조건을 다 채워야 켜진다 → 넓히면 성장 버튼이 켜진다
+                            <Button variant={data.room.can_upgrade ? 'coral' : 'ghost'} size="sm" disabled={busy || !data.room.can_upgrade}
                                 label={`${withRo(ROOM_NAME[data.room.level + 1])} 넓히기 🔶${data.room.next_price}`}
                                 onPress={() => void act('/pet/room')} />
                         ) : (

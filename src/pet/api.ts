@@ -41,7 +41,9 @@ export interface PetInfo {
 
 export interface PetResponse {
     pet: PetInfo;
-    room: { level: number; max: number; next_price: number | null; slots: number; used: number };
+    room: { level: number; max: number; next_price: number | null; slots: number; used: number;
+        /** 방 말고 다른 성장 조건을 다 채워서 방을 넓힐 수 있다 */
+        can_upgrade: boolean };
     items: { key: string; placed: boolean }[];
     decor: { wallpaper: string | null; cushion: string | null };
     shop: {
