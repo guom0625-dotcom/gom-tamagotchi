@@ -1,7 +1,7 @@
 // 한 방향(yaw)에서 펫의 부위를 어떤 순서로 겹쳐 그릴지 정한다.
 // 머리·눈·귀는 한 묶음으로 같이 움직이므로, 묶음 안에서 따로 순서를 정한다.
 import { renderPart, type PartRender } from './voxel';
-import { BODY_PARTS, HEAD_GROUP, type PartId, type PetModel } from './bear';
+import { BODY_PARTS, HEAD_GROUP, type PartId, type PetModel } from './model';
 
 export const YAW_STEPS = 16;
 export const yawOf = (idx: number) => (((idx % YAW_STEPS) + YAW_STEPS) % YAW_STEPS) * (2 * Math.PI / YAW_STEPS);

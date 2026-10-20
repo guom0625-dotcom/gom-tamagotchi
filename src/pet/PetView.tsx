@@ -5,7 +5,7 @@ import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Ellipse, G, Polygon } from 'react-native-svg';
 import { C, type PartRender } from './voxel';
 import { petLayers } from './layers';
-import type { PartId, PetModel } from './bear';
+import type { PartId, PetModel } from './model';
 
 /** 펫 움직임 값 — 모두 네이티브 드라이버로 움직인다 */
 export interface PetAnims {

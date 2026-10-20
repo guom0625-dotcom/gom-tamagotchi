@@ -8,6 +8,7 @@ export interface GrowCond { key: Cond; have: number; need: number; missed: numbe
 export interface PetInfo {
     id: string;
     species: string | null;      // 알이면 아직 모른다 (깨어날 때 정해진다)
+    variant: number;             // 털색·무늬 번호 (species.ts 의 looks)
     name: string | null;
     stage: Stage;
     gone: { reason: 'hunger' | 'sick' | null } | null;

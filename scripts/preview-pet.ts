@@ -1,10 +1,11 @@
 // 펫 미리보기 — 여러 방향으로 그려 PNG 로 저장한다 (앱과 같은 그리기 코드).
-// 단계·옷: STAGE=baby TOP=top_tee_red HAT=hat_cap_blue npx tsx scripts/preview-pet.ts out.png 10 12
+// 종류·변종: SPECIES=cat VARIANT=2   단계·옷: STAGE=baby TOP=top_tee_red HAT=hat_cap_blue npx tsx scripts/preview-pet.ts out.png 10 12
 // 실행: npx tsx scripts/preview-pet.ts out.png 10 12 14 0 6        (숫자 = 방향 번호 0~15, 10 = 정면)
 //       npx tsx scripts/preview-pet.ts out.png happy sad angry 10   (표정 이름을 섞으면 표정 x 방향으로 그린다)
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { bearModel, type BodyStage, type Expr } from '../src/pet/bear';
+import { petModel, type BodyStage, type Expr } from '../src/pet/model';
+import type { Species } from '../src/pet/species';
 import { petLayers, FACE_CAMERA } from '../src/pet/layers';
 
 const out = process.argv[2];
@@ -31,7 +32,8 @@ function fill(poly: [number, number][], c: number[]) {
 idxs.forEach(([expr, idx], n) => {
   const env = process.env;
   const stage = (env.STAGE ?? 'teen') as BodyStage;
-  const L = petLayers(bearModel(expr, stage, { top: env.TOP, hat: env.HAT }), ['bear', expr, stage, env.TOP, env.HAT].join('-'), idx, KV);
+  const sp = (env.SPECIES ?? 'bear') as Species, v = Number(env.VARIANT ?? 0);
+  const L = petLayers(petModel(sp, v, expr, stage, { top: env.TOP, hat: env.HAT }), [sp, v, expr, stage, env.TOP, env.HAT].join('-'), idx, KV);
   const ox = n * CW + CW / 2, oy = CH - 50;
   const draw = (id: keyof typeof L.parts) => {
     for (const p of L.parts[id].polys) fill(p.points.split(' ').map(s => { const [a, b] = s.split(',').map(Number); return [a + ox, b + oy] as [number, number]; }), hex(p.fill));

@@ -7,6 +7,7 @@ import { Price } from '../components/Price';
 import { Button } from '../components/Button';
 import { TopazExchangeModal } from '../components/TopazExchangeModal';
 import { NameModal } from '../components/NameModal';
+import { isSpecies, lookTitle } from '../pet/species';
 import { ShopModal } from '../components/ShopModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
@@ -15,9 +16,6 @@ import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 
 const STAGE_NAME: Record<Stage, string> = { egg: '알', baby: '유아', teen: '청소년', adult: '성인' };
 const ROOM_NAME = ['작은 방', '중간 방', '큰 방'];
-const SPECIES_NAME: Record<string, string> = {
-    bear: '곰', dog: '강아지', cat: '고양이', rabbit: '토끼', squirrel: '다람쥐', hamster: '햄스터',
-};
 
 const ERRORS: Record<string, string> = {
     insufficient_gems: '토파즈가 모자라요',
@@ -70,7 +68,8 @@ export function HomeScreen() {
     const pet = data?.pet ?? null;
     const egg = pet?.stage === 'egg';
     const gone = !!pet?.gone;
-    const speciesName = (pet?.species && SPECIES_NAME[pet.species]) || '아기';
+    // '치즈 고양이'처럼 털색·무늬까지
+    const speciesName = isSpecies(pet?.species) ? lookTitle(pet.species, pet.variant) : '아기';
     const petName = pet?.name ?? speciesName;
 
     const apply = useCallback((res: PetResponse) => {
@@ -212,7 +211,7 @@ export function HomeScreen() {
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
                         poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
                         decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
-                        robotCleaned={pet.robot_cleaned} outfit={pet.wear}
+                        robotCleaned={pet.robot_cleaned} outfit={pet.wear} species={pet.species} variant={pet.variant}
                         placement={data.layout ?? {}} editing={editing}
                         onEditDone={async layout => {
                             if (!layout) { setEditing(false); return; }
@@ -493,4 +492,5 @@ const TEST_ACTIONS: [string, string][] = [
     ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
     ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],
     ['leave', '✉️ 떠나게'], ['new_egg', '🥚 새 알 (무료)'], ['reset_items', '🧹 방·아이템 초기화'],
+    ['next_look', '🎨 다음 종류·무늬'],
 ];

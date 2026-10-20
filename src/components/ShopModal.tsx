@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ITEMS, isPlaceable, CLOTH_SHAPES, COLOR_NAMES, STAGE_NAMES } from '../pet/catalog';
-import { CLOTH_COLORS } from '../pet/bear';
+import { CLOTH_COLORS } from '../pet/model';
 import type { PetResponse } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 

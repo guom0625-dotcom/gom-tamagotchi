@@ -3,7 +3,7 @@
 // 여기서는 겉모습만 다룬다. 기분·상태를 정하는 규칙은 서버(또는 시험용 버튼)가 준다.
 import { Animated, Easing } from 'react-native';
 import type { PetAnims } from './PetView';
-import type { Expr } from './bear';
+import type { Expr } from './model';
 import { yawToward, C } from './voxel';
 import { FACE_CAMERA, YAW_STEPS, yawIndex } from './layers';
 import { SLIDE_TOP, toWorld, type RoomSpec, type SceneLayout, type ToyKey } from './room';

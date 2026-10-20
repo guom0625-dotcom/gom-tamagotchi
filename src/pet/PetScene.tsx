@@ -4,7 +4,8 @@ import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, TouchableO
 import Svg, { G, Line, Polygon } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { C, renderPart, shade, type Part } from './voxel';
-import { bearModel, type Expr, type Outfit } from './bear';
+import { petModel, type Expr, type Outfit } from './model';
+import { isSpecies } from './species';
 import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
 import {
@@ -56,6 +57,9 @@ interface Props {
     robotCleaned?: { id: string; u: number; v: number; at: number }[];
     /** 입은 옷 */
     outfit?: Outfit;
+    /** 종류와 털색·무늬 번호 (서버) */
+    species?: string | null;
+    variant?: number | null;
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
     /** 꾸미기로 정한 물건 자리 (서버) */
@@ -82,7 +86,7 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit, species, variant }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
@@ -342,7 +346,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             depth: FLOOR, el: null,
         } : {
             depth: petDepth + 0.5, el: (
-                <PetView key="pet" model={bearModel(expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`bear-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
+                <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}
