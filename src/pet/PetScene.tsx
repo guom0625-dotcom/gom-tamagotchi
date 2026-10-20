@@ -108,9 +108,12 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean, bowlFull = false
     const origin = useMemo<[number, number]>(() => [0, 0], []);
 
     // 소품·공·펫을 뒤(작은 x + z)부터 그린다
+    // 납작하고 넓은 물건은 가운데로 비교하면 위에 올라선 펫을 덮는다.
+    // 쿠션·편지는 바닥 깔개처럼 늘 맨 아래, 밥그릇·똥은 뒤쪽 가장자리로 비교한다
+    const FLOOR = -100;
     const things: { depth: number; el: React.ReactNode }[] = [
-        { depth: CUSHION.x + CUSHION.z, el: <PropView key="cushion" part={CUSHION.part} at={cushionAt} kv={l.kv} /> },
-        { depth: BOWL.x + BOWL.z, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL.part} at={bowlAt} kv={l.kv} /> },
+        { depth: FLOOR, el: <PropView key="cushion" part={CUSHION.part} at={cushionAt} kv={l.kv} /> },
+        { depth: BOWL.x + BOWL.z - 5.2, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL.part} at={bowlAt} kv={l.kv} /> },
         {
             depth: ballDepth, el: (
                 <Animated.View key="ball" pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateX: ball.x }, { translateY: ball.y }] }}>
@@ -122,10 +125,10 @@ function Room({ layout: l, callRef, mode, poops, gone, onClean, bowlFull = false
             ),
         },
         ...poops.map(p => ({
-            depth: p.x + p.z, el: <PoopView key={p.id} p={p} l={l} onPress={() => clean(p)} />,
+            depth: p.x + p.z - 3.2, el: <PoopView key={p.id} p={p} l={l} onPress={() => clean(p)} />,
         })),
         gone ? {
-            depth: 30, el: <PropView key="letter" part={LETTER_PART} at={floorPoint(l, 15, 15)} kv={l.kv} />,
+            depth: FLOOR, el: <PropView key="letter" part={LETTER_PART} at={floorPoint(l, 15, 15)} kv={l.kv} />,
         } : {
             depth: petDepth + 0.5, el: (
                 <PetView key="pet" model={bearModel(expr)} modelKey={`bear-${expr}`} yawIdx={yaw} kv={l.kv * PET_SCALE} a={a} onPress={() => { void brain.call(); }}>
