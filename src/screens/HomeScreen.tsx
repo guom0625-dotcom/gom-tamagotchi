@@ -14,6 +14,7 @@ import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 const FEED_PRICE = 3;
 
 type Cond = 'feed' | 'pat' | 'clean' | 'room';
+interface GrowCond { key: Cond; have: number; need: number; missed: number }
 interface PetInfo {
     id: string;
     species: string;
@@ -24,7 +25,7 @@ interface PetInfo {
     fullness: number;            // 0~3
     poops: Poop[];
     next_poop_at: number | null;
-    growth: { next: Stage | null; ready: boolean; conds: { key: Cond; have: number; need: number }[] };
+    growth: { next: Stage | null; ready: boolean; conds: GrowCond[] };
 }
 interface PetState {
     pet: PetInfo;
@@ -144,8 +145,9 @@ export function HomeScreen() {
 
     const condLabel = (key: Cond) =>
         key === 'feed' ? '🍚 밥 주기' : key === 'pat' ? (egg ? '🥚 품어주기' : '🤚 쓰다듬기') : key === 'clean' ? '🧹 청소' : '🏠 방 넓히기';
-    const condValue = (c: { key: Cond; have: number; need: number }) =>
-        c.key === 'room' ? `${ROOM_NAME[c.need]} 이상` : `${c.have}/${c.need}일 연속`;
+    const condValue = (c: GrowCond) =>
+        c.key === 'room' ? `${ROOM_NAME[c.need]} 이상`
+            : `${c.missed > 0 && c.have < c.need ? `빠진 날 ${c.missed} · ` : ''}${c.have}/${c.need}일`;
 
     return (
         <ScrollView
@@ -218,7 +220,7 @@ export function HomeScreen() {
                                         </View>
                                     );
                                 })}
-                                <Text style={styles.boxNote}>하루라도 거르면 그 조건은 처음부터 다시 세요</Text>
+                                <Text style={styles.boxNote}>빠진 날이 이틀 쌓일 때마다 하루씩 줄어요</Text>
                                 <Button variant="coral" disabled={!pet.growth.ready || busy} style={{ alignSelf: 'center', marginTop: 4 }}
                                     label={egg ? '🐣 깨어나게 하기' : `⬆️ ${withRo(STAGE_NAME[pet.growth.next])} 성장시키기`} onPress={grow} />
                             </>
