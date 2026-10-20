@@ -17,7 +17,7 @@ type Cond = 'feed' | 'pat' | 'clean' | 'room';
 interface GrowCond { key: Cond; have: number; need: number; missed: number }
 interface PetInfo {
     id: string;
-    species: string;
+    species: string | null;      // 알이면 아직 모른다 (깨어날 때 정해진다)
     name: string | null;
     stage: Stage;
     fed_today: boolean;
@@ -35,6 +35,9 @@ type PetResponse = PetState & { diamonds: number; topaz: number };
 
 const STAGE_NAME: Record<Stage, string> = { egg: '알', baby: '유아', teen: '청소년', adult: '성인' };
 const ROOM_NAME = ['작은 방', '중간 방', '큰 방'];
+const SPECIES_NAME: Record<string, string> = {
+    bear: '곰', dog: '강아지', cat: '고양이', rabbit: '토끼', squirrel: '다람쥐', hamster: '햄스터',
+};
 
 const ERRORS: Record<string, string> = {
     insufficient_gems: '토파즈가 모자라요',
@@ -64,7 +67,8 @@ export function HomeScreen() {
     const [naming, setNaming] = useState<'hatch' | 'rename' | null>(null);
     const pet = state?.pet ?? null;
     const egg = pet?.stage === 'egg';
-    const petName = pet?.name ?? '곰돌이';
+    const speciesName = (pet?.species && SPECIES_NAME[pet.species]) || '아기';
+    const petName = pet?.name ?? speciesName;
 
     const apply = useCallback((res: PetResponse) => {
         setState({ pet: res.pet, room: res.room });
@@ -101,13 +105,20 @@ export function HomeScreen() {
         void act('/pet/clean', { id });
     };
     const grow = async () => {
-        if (egg) { setNaming('hatch'); return; }
-        await act('/pet/grow');
+        // 알이 깨어나면 무엇이 나왔는지 보여 주고 이름을 묻는다
+        if (await act('/pet/grow') && egg) setNaming('hatch');
     };
     const submitName = async (name: string) => {
-        const ok = naming === 'hatch' ? await act('/pet/grow', { name }) : await act('/pet/name', { name });
-        if (ok) setNaming(null);
+        if (await act('/pet/name', { name })) setNaming(null);
     };
+    // 깨어났는데 아직 이름이 없으면 (이름 짓기 창을 닫았거나 앱을 껐을 때) 한 번 더 묻는다
+    const askedName = useRef(false);
+    useEffect(() => {
+        if (pet && pet.stage !== 'egg' && !pet.name && !askedName.current) {
+            askedName.current = true;
+            setNaming('hatch');
+        }
+    }, [pet]);
 
     // 시험판: 기분·상태를 손으로 바꿔 본다 (아이 이름을 5번 누르면 나온다). 고르지 않으면 서버 배부름을 따른다
     const [testMode, setTestMode] = useState<PetMode | null>(null);
@@ -168,7 +179,7 @@ export function HomeScreen() {
                 {pet && (
                     <Pressable disabled={egg || gone} onPress={() => setNaming('rename')} style={styles.petTitle}>
                         <Text style={styles.petName}>{egg ? '🥚 알' : `${petName} ✏️`}</Text>
-                        <Text style={styles.petStage}>{STAGE_NAME[pet.stage]} · {ROOM_NAME[state!.room.level]}</Text>
+                        <Text style={styles.petStage}>{egg ? '무엇이 나올까요? ❓' : `${STAGE_NAME[pet.stage]} ${speciesName}`} · {ROOM_NAME[state!.room.level]}</Text>
                     </Pressable>
                 )}
                 {pet && (
@@ -268,10 +279,10 @@ export function HomeScreen() {
             <TopazExchangeModal visible={exchangeOpen} onClose={() => setExchangeOpen(false)} />
             <NameModal
                 visible={naming !== null}
-                title={naming === 'hatch' ? '🐣 알이 깨어나요!' : '이름 바꾸기'}
+                title={naming === 'hatch' ? `🐣 ${withIGa(speciesName)} 태어났어요!` : '이름 바꾸기'}
                 note={naming === 'hatch' ? '어떤 이름을 지어 줄까요?' : undefined}
                 initial={naming === 'rename' ? petName : ''}
-                confirmLabel={naming === 'hatch' ? '이 이름으로 깨우기' : '바꾸기'}
+                confirmLabel={naming === 'hatch' ? '이 이름으로 할래요' : '바꾸기'}
                 busy={busy}
                 onConfirm={submitName}
                 onClose={() => setNaming(null)}
