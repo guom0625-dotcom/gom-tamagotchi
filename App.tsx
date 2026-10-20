@@ -15,6 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useServerUrl } from './src/hooks/useServerUrl';
 import { useDeepLink } from './src/hooks/useDeepLink';
+import { usePetPush } from './src/hooks/usePetPush';
 import { useAuthStore } from './src/store/authStore';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoadingScreen, OfflineScreen, UnlinkedScreen } from './src/screens/UnlinkedScreen';
@@ -67,6 +68,7 @@ function AppContent() {
   useServerUrl();
   useDeepLink();
   const status = useAuthStore(s => s.status);
+  usePetPush(status === 'linked');
 
   return (
     <>

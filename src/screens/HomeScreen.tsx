@@ -492,5 +492,5 @@ const TEST_ACTIONS: [string, string][] = [
     ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
     ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],
     ['leave', '✉️ 떠나게'], ['new_egg', '🥚 새 알 (무료)'], ['reset_items', '🧹 방·아이템 초기화'],
-    ['next_look', '🎨 다음 종류·무늬'],
+    ['next_look', '🎨 다음 종류·무늬'], ['notify', '🔔 알림 지금 받기'],
 ];
