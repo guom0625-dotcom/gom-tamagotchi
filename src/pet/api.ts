@@ -34,6 +34,8 @@ export interface PetInfo {
     snacks_per_day: number;
     helper_ready: boolean;
     /** 시험 계정만 conds 가 온다. 아이에게는 준비됐는지와 방이 좁은지만 */
+    /** 입은 옷 'top_tee_red' / 'hat_cap_blue' */
+    wear: { top: string | null; hat: string | null };
     growth: { next: Stage | null; ready: boolean; conds: GrowCond[]; room_short?: boolean };
 }
 
@@ -48,6 +50,8 @@ export interface PetResponse {
         decor: Record<string, number>;
         gadgets: Record<string, number>;
         medicine: number; hospital: number; helper: number; new_egg: number; feed: number;
+        /** 지금 크기의 옷값 (알이면 유아 크기 값) */
+        clothes: { tops: Record<string, number>; hats: Record<string, number>; colors: string[] };
     };
     tester: boolean;
     diamonds: number;

@@ -33,3 +33,22 @@ export const isPlaceable = (key: string) => {
     const k = ITEMS[key]?.kind;
     return k === 'toy' || k === 'decor' || k === 'gadget';
 };
+
+/** 옷 모양 (가격은 서버 shop.clothes, 지금 크기 기준). 키는 'top_tee_red' 처럼 모양_색 */
+export const CLOTH_SHAPES: Record<'top' | 'hat', Record<string, { emoji: string; name: string }>> = {
+    top: {
+        tee: { emoji: '👕', name: '티셔츠' },
+        stripe: { emoji: '🎽', name: '줄무늬 티' },
+        hoodie: { emoji: '🧥', name: '후드티' },
+        overalls: { emoji: '👖', name: '멜빵바지' },
+    },
+    hat: {
+        ribbon: { emoji: '🎀', name: '리본' },
+        beanie: { emoji: '🧶', name: '비니' },
+        cap: { emoji: '🧢', name: '야구모자' },
+        straw: { emoji: '👒', name: '밀짚모자' },
+        crown: { emoji: '👑', name: '왕관' },
+    },
+};
+export const COLOR_NAMES: Record<string, string> = { red: '빨강', blue: '파랑', yellow: '노랑', green: '초록', pink: '분홍' };
+export const STAGE_NAMES: Record<string, string> = { egg: '알', baby: '유아', teen: '청소년', adult: '성인' };

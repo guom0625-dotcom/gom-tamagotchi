@@ -4,7 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, View, type LayoutChangeEvent }
 import Svg, { G, Line, Polygon } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { C, renderPart, shade, type Part } from './voxel';
-import { bearModel, type Expr } from './bear';
+import { bearModel, type Expr, type Outfit } from './bear';
 import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
 import {
@@ -20,8 +20,8 @@ const GADGET_PARTS = { robot: ROBOT_PART, feeder: FEEDER_PART, firstaid: FIRSTAI
 const ROBOT_SEEN_KEY = 'pet_robot_seen';
 const FLOOR = '#e2c79f';
 export type Stage = 'egg' | 'baby' | 'teen' | 'adult';
-/** 단계별 펫 크기 (방 칸 기준). 방도 넓어지니 화면에서는 이보다 덜 커 보인다 */
-const STAGE_SCALE: Record<Exclude<Stage, 'egg'>, number> = { baby: 0.55, teen: 0.8, adult: 1.05 };
+/** 단계별 펫 크기 (방 칸 기준). 몸 생김새도 단계마다 다르다(bear.ts DIMS). 방도 넓어지니 화면에서는 덜 커 보인다 */
+const STAGE_SCALE: Record<Exclude<Stage, 'egg'>, number> = { baby: 0.62, teen: 0.8, adult: 0.95 };
 
 /** 서버의 똥: 자리 u, v 는 0~1 */
 export interface Poop { id: string; u: number; v: number }
@@ -52,6 +52,8 @@ interface Props {
     decor?: RoomDecor;
     /** 자동 청소기가 치운 똥 (서버) — 청소기가 다녀가는 모습을 보여 준다 */
     robotCleaned?: { id: string; u: number; v: number; at: number }[];
+    /** 입은 옷 */
+    outfit?: Outfit;
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
 }
@@ -69,7 +71,7 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
@@ -328,7 +330,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             depth: FLOOR, el: null,
         } : {
             depth: petDepth + 0.5, el: (
-                <PetView key="pet" model={bearModel(expr)} modelKey={`bear-${expr}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
+                <PetView key="pet" model={bearModel(expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`bear-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}

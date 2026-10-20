@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ITEMS, isPlaceable } from '../pet/catalog';
+import { ITEMS, isPlaceable, CLOTH_SHAPES, COLOR_NAMES, STAGE_NAMES } from '../pet/catalog';
+import { CLOTH_COLORS } from '../pet/bear';
 import type { PetResponse } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
-type Tab = 'snack' | 'toy' | 'decor' | 'gadget' | 'storage' | 'special';
+type Tab = 'snack' | 'clothes' | 'toy' | 'decor' | 'gadget' | 'storage' | 'special';
 const TABS: [Tab, string][] = [
-    ['snack', '🍪 간식'], ['toy', '🧸 장난감'], ['decor', '🛋️ 가구'], ['gadget', '⚙️ 능력'], ['storage', '📦 창고'], ['special', '⭐ 특별'],
+    ['snack', '🍪 간식'], ['clothes', '👕 옷'], ['toy', '🧸 장난감'], ['decor', '🛋️ 가구'], ['gadget', '⚙️ 능력'], ['storage', '📦 창고'], ['special', '⭐ 특별'],
 ];
 const ROOM_NAME = ['작은 방', '중간 방', '큰 방'];
 
@@ -25,6 +26,8 @@ interface Props {
 export function ShopModal({ visible, data, busy, act, onSnack, onClose }: Props) {
     const insets = useSafeAreaInsets();
     const [tab, setTab] = useState<Tab>('snack');
+    // 옷 모양마다 고른 색
+    const [pick, setPick] = useState<Record<string, string>>({});
     const { pet, shop, room } = data;
     const owned = new Map(data.items.map(i => [i.key, i.placed]));
     const egg = pet.stage === 'egg';
@@ -73,6 +76,53 @@ export function ShopModal({ visible, data, busy, act, onSnack, onClose }: Props)
             <Text style={styles.note}>간식은 하루 {pet.snacks_per_day}번까지 (오늘 {Math.max(0, left)}번 남음). 배는 부르지 않아요.</Text>
             {Object.entries(shop.snacks).map(([k, s]) => row(k, btn(`주기 🔶${s.price}`, () => void giveSnack(k), egg || gone || left <= 0)))}
             {egg && <Text style={styles.note}>알은 아직 먹지 않아요</Text>}
+        </>;
+    } else if (tab === 'clothes') {
+        const stage = pet.stage;
+        const has = (key: string) => owned.has(`${key}@${stage}`);
+        const small = data.items.filter(i => i.key.includes('@') && !i.key.endsWith(`@${stage}`)).length;
+        const clothRow = (slot: 'top' | 'hat', shape: string, price: number) => {
+            const info = CLOTH_SHAPES[slot][shape];
+            if (!info) return null;
+            const worn = pet.wear[slot];
+            const colors = data.shop.clothes.colors;
+            const wornColor = worn?.startsWith(`${slot}_${shape}_`) ? worn.split('_')[2] : undefined;
+            const color = pick[`${slot}_${shape}`] ?? wornColor ?? colors.find(c => has(`${slot}_${shape}_${c}`)) ?? colors[0];
+            const key = `${slot}_${shape}_${color}`;
+            const wearing = worn === key;
+            const right = !has(key)
+                ? btn(`🔶${price}`, () => void act('/pet/buy-clothes', { item: key }), egg || gone)
+                : wearing
+                    ? btn('벗기', () => void act('/pet/wear', { slot, item: null }), gone, true)
+                    : btn('입기', () => void act('/pet/wear', { slot, item: key }), gone);
+            return (
+                <View key={key} style={styles.row}>
+                    <Text style={styles.emoji}>{info.emoji}</Text>
+                    <View style={{ flex: 1, gap: 6 }}>
+                        <Text style={styles.itemName}>{info.name} <Text style={styles.itemDesc}>{COLOR_NAMES[color]}{wearing ? ' · 입는 중' : has(key) ? ' · 가지고 있음' : ''}</Text></Text>
+                        <View style={styles.swatches}>
+                            {colors.map(c => (
+                                <Pressable key={c} hitSlop={4} onPress={() => setPick(p => ({ ...p, [`${slot}_${shape}`]: c }))}
+                                    style={[styles.swatch, { backgroundColor: CLOTH_COLORS[c] }, c === color && styles.swatchOn]}>
+                                    {has(`${slot}_${shape}_${c}`) && <Text style={styles.swatchMark}>✓</Text>}
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
+                    {right}
+                </View>
+            );
+        };
+        body = <>
+            <Text style={styles.note}>
+                {egg ? '알은 아직 옷을 못 입어요. 깨어나면 입혀 주세요.'
+                    : `지금 몸(${STAGE_NAMES[stage]})에 맞는 옷이에요. 자라면 작아져서 새로 사야 해요.`}
+                {small > 0 ? ` 작아진 옷 ${small}벌은 옷장에 있어요.` : ''}
+            </Text>
+            <Text style={styles.section}>상의</Text>
+            {Object.entries(data.shop.clothes.tops).map(([k, p]) => clothRow('top', k, p))}
+            <Text style={styles.section}>모자</Text>
+            {Object.entries(data.shop.clothes.hats).map(([k, p]) => clothRow('hat', k, p))}
         </>;
     } else if (tab === 'toy') {
         body = <>
@@ -159,6 +209,11 @@ const styles = StyleSheet.create({
     emoji: { fontSize: 28, width: 36, textAlign: 'center' },
     itemName: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.ink[900] },
     itemDesc: { fontFamily: fontFamilies.body, fontSize: fontSizes.xs, color: colors.ink[500] },
+    section: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.sm, color: colors.ink[700], marginTop: 4 },
+    swatches: { flexDirection: 'row', gap: 8 },
+    swatch: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+    swatchOn: { borderColor: colors.ink[900] },
+    swatchMark: { color: '#fff', fontSize: 12, fontFamily: fontFamilies.bodyBold },
     have: { fontFamily: fontFamilies.bodyMed, fontSize: fontSizes.sm, color: colors.mint[500] },
     btn: { backgroundColor: colors.sun[500], borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8 },
     btnGhost: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.ink[200] },

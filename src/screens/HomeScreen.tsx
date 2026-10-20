@@ -37,6 +37,8 @@ const ERRORS: Record<string, string> = {
     room_full: '방이 꽉 찼어요. 다른 걸 창고에 넣어 주세요',
     helper_cooldown: '돌봄 도우미는 일주일에 1번이에요',
     no_missed_day: '채울 빠진 날이 없어요',
+    already_owned: '벌써 가지고 있어요',
+    not_owned: '이 옷은 지금 몸에 안 맞아요',
 };
 
 /** 잠자는 시간 (한국 시각): 밤 0~7시, 낮 9~16시. 주말도 같다 */
@@ -205,7 +207,7 @@ export function HomeScreen() {
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
                         poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
                         decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
-                        robotCleaned={pet.robot_cleaned} />
+                        robotCleaned={pet.robot_cleaned} outfit={pet.wear} />
                 )}
             </View>
 
