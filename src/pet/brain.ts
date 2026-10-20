@@ -6,7 +6,7 @@ import type { PetAnims } from './PetView';
 import type { Expr } from './bear';
 import { yawToward, C } from './voxel';
 import { FACE_CAMERA, YAW_STEPS, yawIndex } from './layers';
-import { SLIDE_TOP, type RoomSpec, type SceneLayout, type ToyKey } from './room';
+import { SLIDE_TOP, toWorld, type RoomSpec, type SceneLayout, type ToyKey } from './room';
 
 export type Mood = 'happy' | 'normal' | 'sad' | 'angry';
 export type Rest = 'hungry' | 'sleep' | 'sick';
@@ -636,18 +636,23 @@ export class PetBrain {
         await this.wag(3, t);
     }
 
-    // 터널: 앞쪽 입구로 들어가 안쪽 끝으로 나온다
+    // 터널: 한쪽 입구로 들어가 반대쪽으로 나온다 (돌려 놓은 방향을 따른다. 기준 좌표로 길이 ±3)
     private async playTunnel(tn: RoomSpec['toys']['tunnel'], t: number) {
-        await this.walkTo(tn.x, tn.z1 + 2.5, t);
-        await this.walkTo(tn.x, tn.z1 - 0.5, t);
+        // 가까운 쪽 입구로 들어간다
+        const [ax, az] = toWorld(tn, 0, 3), [bx, bz] = toWorld(tn, 0, -3);
+        const fromA = Math.hypot(this.x - ax, this.z - az) <= Math.hypot(this.x - bx, this.z - bz);
+        const end = (sign: number, d: number) => toWorld(tn, 0, sign * d);
+        const s = fromA ? 1 : -1;
+        await this.walkTo(...end(s, 5.5), t);
+        await this.walkTo(...end(s, 2.5), t);
         this.env.setHidden(true);
         try {
             await this.wait(1300, t);
-            this.placeAt(tn.x, tn.z0 + 0.5);
+            this.placeAt(...end(-s, 2.5));
         } finally {
             this.env.setHidden(false);
         }
-        await this.walkTo(tn.x, tn.z0 - 2.5, t);
+        await this.walkTo(...end(-s, 5.5), t);
         await this.turnTo(FACE_CAMERA, t);
         this.env.effect('❗');
         await this.hop(1.5, t);
@@ -656,17 +661,19 @@ export class PetBrain {
 
     // 미끄럼틀: 사다리로 올라가 미끄러져 내려온다
     private async playSlide(sl: RoomSpec['toys']['slide'], t: number) {
-        await this.walkTo(sl.x, sl.z0 - 2, t);
-        await this.faceToward(sl.x, sl.z1, t);
+        // 기준 좌표: 사다리 끝 lz -3.5, 내려오는 끝 lz +3.5 (돌려 놓은 방향을 따른다)
+        const W = (lz: number) => toWorld(sl, 0, lz);
+        await this.walkTo(...W(-5.5), t);
+        await this.faceToward(...W(3.5), t);
         const kv = this.env.layout.kv;
         const up = (y: number) => -y * C * kv;
         this.env.setPetDepth(999);   // 미끄럼틀 위에서는 늘 앞에
         try {
             // 한 칸씩 올라간다
-            const [tx, ty] = this.screen(sl.x, sl.z0 + 0.8);
+            const [tx, ty] = this.screen(...W(-2.7));
             const steps = 4;
             for (let i = 1; i <= steps; i++) {
-                const [sx, sy] = this.screen(sl.x, sl.z0 - 2 + (2.8 * i) / steps);
+                const [sx, sy] = this.screen(...W(-5.5 + (2.8 * i) / steps));
                 await this.play(Animated.parallel([
                     this.to(this.a.hop, up(SLIDE_TOP * i / steps), 260),
                     this.to(this.a.posX, i === steps ? tx : sx, 260), this.to(this.a.posY, i === steps ? ty : sy, 260),
@@ -676,9 +683,9 @@ export class PetBrain {
             await this.turnTo(FACE_CAMERA, t);
             this.env.effect('🎵');
             await this.wait(400, t);
-            await this.faceToward(sl.x, sl.z1 + 10, t);
+            await this.faceToward(...W(13.5), t);
             // 쭈욱
-            const [ex, ey] = this.screen(sl.x, sl.z1 + 0.5);
+            const [ex, ey] = this.screen(...W(4));
             await this.play(Animated.parallel([
                 Animated.timing(this.a.posX, { toValue: ex, duration: 650, easing: Easing.in(Easing.quad), ...native }),
                 Animated.timing(this.a.posY, { toValue: ey, duration: 650, easing: Easing.in(Easing.quad), ...native }),
@@ -687,7 +694,7 @@ export class PetBrain {
             ]), t);
         } finally {
             this.a.hop.setValue(0);
-            this.placeAt(sl.x, sl.z1 + 0.5);
+            this.placeAt(...W(4));
         }
         await this.play(this.to(this.a.wave, 0, 200), t);
         await this.hop(1.2, t);

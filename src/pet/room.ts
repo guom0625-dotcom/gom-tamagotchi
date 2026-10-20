@@ -1,12 +1,17 @@
 // 펫이 사는 방 — 미니룸과 같은 카메라. 바닥은 ROOM x ROOM 칸(복셀 단위).
 // x = 0 쪽이 왼쪽 벽, z = 0 쪽이 오른쪽 벽. 화면 아래쪽(x, z 가 큰 쪽)이 카메라에 가깝다.
-import { C, type Part, type Box } from './voxel';
+import { C, rotY, type Part, type Box } from './voxel';
 
 export const WALL_H = 13;
 /** 방 크기 단계별 바닥 칸 수 (작은 방 · 중간 방 · 큰 방) */
 export const ROOM_SIZES = [30, 34, 38];
 
-export interface Spot { x: number; z: number; r: number }
+/** 물건 자리. r 은 펫이 피해 다니는 반지름, rot 은 방향 (0~3, 90° 단위) */
+export interface Spot { x: number; z: number; r: number; rot?: number }
+
+/** 꾸미기로 정한 자리와 방향 (서버 pet_home.layout) */
+export interface Placement { x: number; z: number; rot: number }
+export type RoomLayout = Record<string, Placement>;
 
 /** 방 크기에 따라 정해지는 자리들 */
 export interface RoomSpec {
@@ -16,13 +21,8 @@ export interface RoomSpec {
     cushion: Spot;
     bowl: Spot;
     ball: Spot;
-    /** 장난감 자리. tunnel 은 z0~z1 로 뻗고, slide 는 z0(사다리) → z1(내려오는 끝) */
-    toys: {
-        doll: Spot;
-        bubbles: Spot;
-        tunnel: Spot & { z0: number; z1: number };
-        slide: Spot & { z0: number; z1: number };
-    };
+    /** 장난감 자리. 터널·미끄럼틀은 rot 0 일 때 z 로 뻗는다 (미끄럼틀은 -z 사다리 → +z 내려오는 끝) */
+    toys: { doll: Spot; bubbles: Spot; tunnel: Spot; slide: Spot };
     rug: Spot;
     plant: Spot;
     /** 능력 물건 자리 */
@@ -35,8 +35,39 @@ export const GADGET_KEYS: GadgetKey[] = ['robot', 'feeder', 'firstaid', 'bed'];
 export type ToyKey = keyof RoomSpec['toys'];
 export const TOY_KEYS: ToyKey[] = ['doll', 'bubbles', 'tunnel', 'slide'];
 
-export function roomSpec(level: number): RoomSpec {
+export function roomSpec(level: number, layout?: RoomLayout): RoomSpec {
     const size = ROOM_SIZES[Math.max(0, Math.min(ROOM_SIZES.length - 1, level))];
+    const spec = defaultSpec(size);
+    if (layout) {
+        for (const [key, p] of Object.entries(layout)) {
+            const s = spotRef(spec, key);
+            if (!s) continue;
+            // 방이 바뀌어도 안에 있게
+            s.x = Math.max(0, Math.min(size, p.x)); s.z = Math.max(0, Math.min(size, p.z)); s.rot = p.rot & 3;
+        }
+    }
+    return spec;
+}
+
+/** 옮길 수 있는 물건 (커튼은 창문에 붙어 있다) */
+export const MOVABLE_KEYS = ['cushion', 'bowl', 'rug', 'plant', 'doll', 'bubbles', 'tunnel', 'slide', 'robot', 'feeder', 'firstaid', 'bed'] as const;
+export type MovableKey = typeof MOVABLE_KEYS[number];
+
+/** 물건 키 → 그 자리 (고치면 spec 이 바뀐다) */
+export function spotRef(R: RoomSpec, key: string): Spot | undefined {
+    if (key === 'cushion' || key === 'bowl' || key === 'rug' || key === 'plant') return R[key];
+    if (key in R.toys) return R.toys[key as ToyKey];
+    if (key in R.gadgets) return R.gadgets[key as GadgetKey];
+    return undefined;
+}
+
+/** 물건 기준 좌표(lx, lz, 돌리기 전)를 방 좌표로 */
+export function toWorld(s: Spot, lx: number, lz: number): [number, number] {
+    const [rx, rz] = rotY(lx, lz, ((s.rot ?? 0) * Math.PI) / 2);
+    return [s.x + rx, s.z + rz];
+}
+
+function defaultSpec(size: number): RoomSpec {
     return {
         size,
         walkMin: 6,
@@ -47,13 +78,13 @@ export function roomSpec(level: number): RoomSpec {
         toys: {
             doll: { x: 11.5, z: 7, r: 1.8 },
             bubbles: { x: Math.round(size * 0.55), z: 6.5, r: 2 },
-            tunnel: { x: 7.5, z: size * 0.42, r: 3, z0: size * 0.42 - 3, z1: size * 0.42 + 3 },
-            slide: { x: size - 7, z: size * 0.5 + 3.5, r: 4, z0: size * 0.5, z1: size * 0.5 + 7 },
+            tunnel: { x: 7.5, z: size * 0.42 - 2, r: 3 },
+            slide: { x: size - 7, z: size * 0.5 + 3.5, r: 4 },
         },
         rug: { x: size / 2 + 1, z: size / 2 + 1, r: 7 },
         plant: { x: 2.5, z: 2.5, r: 2 },
         gadgets: {
-            robot: { x: size - 4, z: size - 4, r: 2 },
+            robot: { x: size - 3.6, z: size - 3.6, r: 2 },
             feeder: { x: size - 8, z: 3.2, r: 2 },
             firstaid: { x: 2.6, z: size - 4, r: 2 },
             bed: { x: 17, z: size - 3.5, r: 3 },
@@ -82,8 +113,8 @@ export interface SceneLayout {
     room: RoomSpec;
 }
 
-export function makeSceneLayout(width: number, level = 0): SceneLayout {
-    const room = roomSpec(level);
+export function makeSceneLayout(width: number, level = 0, layout?: RoomLayout): SceneLayout {
+    const room = roomSpec(level, layout);
     const pad = 8;
     const kv = (width - pad * 2) / (2 * room.size * C);
     const oy = WALL_H * C * kv + pad;
@@ -340,3 +371,52 @@ export const BED_PART: Part = {
     ],
     pivot: [0, 0, 0],
 };
+
+// ── 꾸미기: 바닥에서 차지하는 자리 ─────────────────
+/** 납작해서 다른 물건이 위에 올라가도 되는 것 */
+export const FLAT_KEYS = new Set(['rug']);
+const partOf = (): Record<MovableKey, Part> => ({
+    cushion: CUSHION_PART, bowl: BOWL_PART, rug: RUG_PART, plant: PLANT_PART,
+    doll: DOLL_PART, bubbles: BUBBLES_PART, tunnel: TUNNEL_PART, slide: SLIDE_PART,
+    robot: ROBOT_PART, feeder: FEEDER_PART, firstaid: FIRSTAID_PART, bed: BED_PART,
+});
+let PARTS: Record<MovableKey, Part> | undefined;
+export const movablePart = (key: MovableKey) => (PARTS ??= partOf())[key];
+
+export interface Rect { x0: number; z0: number; x1: number; z1: number }
+/** 물건이 바닥에서 차지하는 네모 (돌린 뒤). 터널·미끄럼틀은 드나드는 앞뒤 자리까지 */
+export function footprint(key: MovableKey, s: Spot): Rect {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const b of movablePart(key).boxes) {
+        x0 = Math.min(x0, b.b[0]); z0 = Math.min(z0, b.b[2]); x1 = Math.max(x1, b.b[3]); z1 = Math.max(z1, b.b[5]);
+    }
+    if (key === 'tunnel' || key === 'slide') { z0 -= 2.5; z1 += 2.5; }
+    const pts = [toWorld(s, x0, z0), toWorld(s, x1, z1)];
+    return {
+        x0: Math.min(pts[0][0], pts[1][0]), x1: Math.max(pts[0][0], pts[1][0]),
+        z0: Math.min(pts[0][1], pts[1][1]), z1: Math.max(pts[0][1], pts[1][1]),
+    };
+}
+
+/** 잘못 놓인 물건: 방 밖으로 나갔거나 다른 물건과 겹친다 (러그는 겹쳐도 된다) */
+export function layoutProblems(R: RoomSpec, keys: MovableKey[]): Set<MovableKey> {
+    const bad = new Set<MovableKey>();
+    const rects = keys.map(k => ({ k, r: footprint(k, spotRef(R, k)!) }));
+    const m = 0.2;
+    for (const { k, r } of rects) {
+        if (r.x0 < m || r.z0 < m || r.x1 > R.size - m || r.z1 > R.size - m) bad.add(k);
+    }
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        if (FLAT_KEYS.has(a.k) || FLAT_KEYS.has(b.k)) continue;
+        if (a.r.x0 < b.r.x1 && b.r.x0 < a.r.x1 && a.r.z0 < b.r.z1 && b.r.z0 < a.r.z1) { bad.add(a.k); bad.add(b.k); }
+    }
+    return bad;
+}
+
+/** 화면 위치 → 바닥 (x, z) */
+export function floorAt(l: SceneLayout, sx: number, sy: number): [number, number] {
+    const a = (sx - l.ox) / (C * l.kv);          // x - z
+    const b = (2 * (sy - l.oy)) / l.kv;          // x + z
+    return [(a + b) / 2, (b - a) / 2];
+}

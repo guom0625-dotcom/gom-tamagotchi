@@ -57,6 +57,8 @@ export function HomeScreen() {
     const insets = useSafeAreaInsets();
     const [exchangeOpen, setExchangeOpen] = useState(false);
     const [shopOpen, setShopOpen] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const scrollRef = useRef<ScrollView>(null);
     const [refreshing, setRefreshing] = useState(false);
     const ctrl = useRef<PetControl | null>(null);
 
@@ -181,9 +183,11 @@ export function HomeScreen() {
 
     return (
         <ScrollView
+            ref={scrollRef}
             style={styles.screen}
             contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={pull} />}
+            scrollEnabled={!editing}
         >
             <View style={styles.header}>
                 <Pressable onPress={tapName} style={{ flexShrink: 1 }}>
@@ -208,7 +212,12 @@ export function HomeScreen() {
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
                         poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
                         decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
-                        robotCleaned={pet.robot_cleaned} outfit={pet.wear} />
+                        robotCleaned={pet.robot_cleaned} outfit={pet.wear}
+                        placement={data.layout ?? {}} editing={editing}
+                        onEditDone={async layout => {
+                            if (!layout) { setEditing(false); return; }
+                            if (await act('/pet/layout', { layout })) setEditing(false);
+                        }} />
                 )}
             </View>
 
@@ -309,14 +318,18 @@ export function HomeScreen() {
                                 <Text style={styles.boxNote}>잘 돌봐 주면 넓힐 수 있어요</Text>
                             )}
                         </View>
-                        {data.room.next_price !== null ? (
-                            // 돌봄 조건을 다 채워야 켜진다 → 넓히면 성장 버튼이 켜진다
-                            <Button variant={data.room.can_upgrade ? 'coral' : 'ghost'} size="sm" disabled={busy || !data.room.can_upgrade}
-                                label={`${withRo(ROOM_NAME[data.room.level + 1])} 넓히기 🔶${data.room.next_price}`}
-                                onPress={() => void act('/pet/room')} />
-                        ) : (
-                            <Text style={styles.boxNote}>가장 큰 방이에요</Text>
-                        )}
+                        <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                            <Button variant="ghost" size="sm" disabled={busy || editing} label="🪄 꾸미기"
+                                onPress={() => { setEditing(true); scrollRef.current?.scrollTo({ y: 0, animated: true }); }} />
+                            {data.room.next_price !== null ? (
+                                // 돌봄 조건을 다 채워야 켜진다 → 넓히면 성장 버튼이 켜진다
+                                <Button variant={data.room.can_upgrade ? 'coral' : 'ghost'} size="sm" disabled={busy || !data.room.can_upgrade}
+                                    label={`${withRo(ROOM_NAME[data.room.level + 1])} 넓히기 🔶${data.room.next_price}`}
+                                    onPress={() => void act('/pet/room')} />
+                            ) : (
+                                <Text style={styles.boxNote}>가장 큰 방이에요</Text>
+                            )}
+                        </View>
                     </View>
                 </>
             ))}

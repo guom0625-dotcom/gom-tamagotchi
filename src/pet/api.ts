@@ -46,6 +46,8 @@ export interface PetResponse {
         can_upgrade: boolean };
     items: { key: string; placed: boolean }[];
     decor: { wallpaper: string | null; cushion: string | null };
+    /** 꾸미기로 정한 물건 자리 (없는 물건은 기본 자리) */
+    layout: Record<string, { x: number; z: number; rot: number }>;
     shop: {
         snacks: Record<string, { price: number; hours: number }>;
         toys: Record<string, number>;

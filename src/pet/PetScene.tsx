@@ -1,6 +1,6 @@
 // 펫의 방 — 벽·바닥·소품을 그리고, 그 안에서 펫이 혼자 논다. 펫을 누르거나 부르기 버튼을 누르면 쳐다본다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { G, Line, Polygon } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { C, renderPart, shade, type Part } from './voxel';
@@ -8,11 +8,13 @@ import { bearModel, type Expr, type Outfit } from './bear';
 import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
 import {
-    makeSceneLayout, floorPoint, poopSpot, WALL_H, CUSHION_PART, BOWL_PART, BOWL_FULL_PART, BALL_PART, POOP_PART, LETTER_PART, EGG_PART,
+    makeSceneLayout, floorPoint, ROOM_SIZES, poopSpot, WALL_H, CUSHION_PART, BOWL_PART, BOWL_FULL_PART, BALL_PART, POOP_PART, LETTER_PART, EGG_PART,
     DOLL_PART, BUBBLES_PART, TUNNEL_PART, SLIDE_PART, RUG_PART, PLANT_PART, CUSHION_BLUE_PART, WALLPAPERS, TOY_KEYS,
     ROBOT_PART, FEEDER_PART, FIRSTAID_PART, BED_PART, GADGET_KEYS,
-    type SceneLayout, type ToyKey,
+    MOVABLE_KEYS, FLAT_KEYS, spotRef, footprint, layoutProblems, floorAt, movablePart,
+    type SceneLayout, type ToyKey, type RoomLayout, type MovableKey, type Spot,
 } from './room';
+import { ITEMS } from './catalog';
 
 const WALL = '#efe4d0';
 const GADGET_PARTS = { robot: ROBOT_PART, feeder: FEEDER_PART, firstaid: FIRSTAID_PART, bed: BED_PART };
@@ -56,17 +58,26 @@ interface Props {
     outfit?: Outfit;
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
+    /** 꾸미기로 정한 물건 자리 (서버) */
+    placement?: RoomLayout;
+    /** 꾸미기 중 — 펫 대신 물건을 끌어 옮기는 화면 */
+    editing?: boolean;
+    /** 꾸미기 끝: 저장할 자리, 취소면 null */
+    onEditDone?: (layout: RoomLayout | null) => void;
 }
 
 export function PetScene(props: Props) {
     const [width, setWidth] = useState(0);
     const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
     // 화면이 다시 그려질 때마다 새 배치를 만들면 펫이 처음부터 다시 시작된다
-    const layout = useMemo(() => makeSceneLayout(width, props.roomLevel), [width, props.roomLevel]);
+    const placeKey = JSON.stringify(props.placement ?? {});
+    const layout = useMemo(() => makeSceneLayout(width, props.roomLevel, props.placement), [width, props.roomLevel, placeKey]);
     const who = props.gone ? 'gone' : props.stage;
     return (
         <View onLayout={onLayout} style={{ width: '100%' }}>
-            {width > 0 && <Room key={`${width}:${props.roomLevel}:${who}`} layout={layout} {...props} />}
+            {width > 0 && (props.editing
+                ? <EditRoom l={layout} decor={props.decor ?? NO_DECOR} saved={props.placement ?? {}} onDone={props.onEditDone ?? (() => {})} />
+                : <Room key={`${width}:${props.roomLevel}:${who}:${placeKey}`} layout={layout} {...props} />)}
         </View>
     );
 }
@@ -276,6 +287,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     const bowlAt = useMemo(() => floorPoint(l, R.bowl.x, R.bowl.z), [l]);
     const origin = useMemo<[number, number]>(() => [0, 0], []);
     const at = (s: { x: number; z: number }) => floorPoint(l, s.x, s.z);
+    const rotOf = (s: Spot) => ((s.rot ?? 0) * Math.PI) / 2;
     const T = R.toys;
     const has = (k: string) => decor.items.includes(k);
 
@@ -284,25 +296,25 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     // 쿠션·편지는 바닥 깔개처럼 늘 맨 아래, 밥그릇·똥은 뒤쪽 가장자리로 비교한다
     const FLOOR = -100;
     const things: { depth: number; el: React.ReactNode }[] = [
-        ...(has('rug') ? [{ depth: FLOOR - 1, el: <PropView key="rug" part={RUG_PART} at={at(R.rug)} kv={l.kv} /> }] : []),
-        { depth: FLOOR, el: <PropView key="cushion" part={decor.cushion === 'cushion_blue' ? CUSHION_BLUE_PART : CUSHION_PART} at={cushionAt} kv={l.kv} /> },
-        ...(has('plant') ? [{ depth: R.plant.x + R.plant.z, el: <PropView key="plant" part={PLANT_PART} at={at(R.plant)} kv={l.kv} /> }] : []),
-        ...(has('doll') ? [{ depth: T.doll.x + T.doll.z - 1, el: <PropView key="doll" part={DOLL_PART} at={at(T.doll)} kv={l.kv} /> }] : []),
-        ...(has('bubbles') ? [{ depth: T.bubbles.x + T.bubbles.z - 1.5, el: <PropView key="bubbles" part={BUBBLES_PART} at={at(T.bubbles)} kv={l.kv} /> }] : []),
-        ...(has('tunnel') ? [{ depth: T.tunnel.x + T.tunnel.z, el: <PropView key="tunnel" part={TUNNEL_PART} at={at(T.tunnel)} kv={l.kv} /> }] : []),
-        ...(has('slide') ? [{ depth: T.slide.x + T.slide.z, el: <PropView key="slide" part={SLIDE_PART} at={at(T.slide)} kv={l.kv} /> }] : []),
+        ...(has('rug') ? [{ depth: FLOOR - 1, el: <PropView key="rug" part={RUG_PART} at={at(R.rug)} kv={l.kv} yaw={rotOf(R.rug)} /> }] : []),
+        { depth: FLOOR, el: <PropView key="cushion" part={decor.cushion === 'cushion_blue' ? CUSHION_BLUE_PART : CUSHION_PART} at={cushionAt} kv={l.kv} yaw={rotOf(R.cushion)} /> },
+        ...(has('plant') ? [{ depth: R.plant.x + R.plant.z, el: <PropView key="plant" part={PLANT_PART} at={at(R.plant)} kv={l.kv} yaw={rotOf(R.plant)} /> }] : []),
+        ...(has('doll') ? [{ depth: T.doll.x + T.doll.z - 1, el: <PropView key="doll" part={DOLL_PART} at={at(T.doll)} kv={l.kv} yaw={rotOf(T.doll)} /> }] : []),
+        ...(has('bubbles') ? [{ depth: T.bubbles.x + T.bubbles.z - 1.5, el: <PropView key="bubbles" part={BUBBLES_PART} at={at(T.bubbles)} kv={l.kv} yaw={rotOf(T.bubbles)} /> }] : []),
+        ...(has('tunnel') ? [{ depth: T.tunnel.x + T.tunnel.z, el: <PropView key="tunnel" part={TUNNEL_PART} at={at(T.tunnel)} kv={l.kv} yaw={rotOf(T.tunnel)} /> }] : []),
+        ...(has('slide') ? [{ depth: T.slide.x + T.slide.z, el: <PropView key="slide" part={SLIDE_PART} at={at(T.slide)} kv={l.kv} yaw={rotOf(T.slide)} /> }] : []),
         ...(hasRobot ? [{
             depth: robotDepth - 0.5, el: (
                 <Animated.View key="robot" pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateX: robot.x }, { translateY: robot.y }] }}>
-                    <PropView part={ROBOT_PART} at={origin} kv={l.kv} center />
+                    <PropView part={ROBOT_PART} at={origin} kv={l.kv} center yaw={rotOf(R.gadgets.robot)} />
                 </Animated.View>
             ),
         }] : []),
         ...GADGET_KEYS.filter(k => k !== 'robot' && has(k)).map(k => ({
             depth: R.gadgets[k].x + R.gadgets[k].z - (k === 'bed' ? 2 : 1),
-            el: <PropView key={k} part={GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} />,
+            el: <PropView key={k} part={GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} yaw={rotOf(R.gadgets[k])} />,
         })),
-        { depth: R.bowl.x + R.bowl.z - 5.2, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL_PART} at={bowlAt} kv={l.kv} /> },
+        { depth: R.bowl.x + R.bowl.z - 5.2, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL_PART} at={bowlAt} kv={l.kv} yaw={rotOf(R.bowl)} /> },
         {
             depth: ballDepth, el: (
                 <Animated.View key="ball" pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateX: ball.x }, { translateY: ball.y }] }}>
@@ -363,6 +375,132 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     );
 }
 
+// ── 꾸미기: 물건을 눌러 고르고 끌어서 옮긴다. ↻ 로 90°씩 돌린다 ──
+const NAMES: Record<string, string> = { cushion: '쿠션', bowl: '밥그릇' };
+const snap = (v: number) => Math.round(v * 2) / 2;
+
+function EditRoom({ l, decor, saved, onDone }: {
+    l: SceneLayout; decor: RoomDecor; saved: RoomLayout; onDone: (layout: RoomLayout | null) => void;
+}) {
+    // 쿠션·밥그릇은 늘 방에 있다 (창고에 못 넣는다)
+    const keys = useMemo(() => MOVABLE_KEYS.filter(k => k === 'cushion' || k === 'bowl' || decor.items.includes(k)), [decor.items.join(',')]);
+    const start = () => Object.fromEntries(keys.map(k => {
+        const sp = spotRef(l.room, k)!;
+        return [k, { x: sp.x, z: sp.z, rot: sp.rot ?? 0 }];
+    })) as Record<MovableKey, { x: number; z: number; rot: number }>;
+    const [pos, setPos] = useState(start);
+    const [sel, setSel] = useState<MovableKey | null>(null);
+    // 지금 자리를 넣은 방 (겹침 검사용)
+    const spec = useMemo(() => {
+        const r = JSON.parse(JSON.stringify(l.room)) as SceneLayout['room'];
+        for (const k of keys) Object.assign(spotRef(r, k)!, pos[k]);
+        return r;
+    }, [l, keys, pos]);
+    const bad = useMemo(() => layoutProblems(spec, keys), [spec, keys]);
+
+    const posRef = useRef(pos); posRef.current = pos;
+    const specRef = useRef(spec); specRef.current = spec;
+    const drag = useRef<{ key: MovableKey; x: number; z: number } | null>(null);
+    const pan = useMemo(() => PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: e => {
+            const [fx, fz] = floorAt(l, e.nativeEvent.locationX, e.nativeEvent.locationY);
+            // 키 큰 물건은 윗부분을 눌러도 잡히게, 눌린 곳에서 화면 아래(바닥 앞쪽)로 조금씩 내려가며 찾는다
+            let hit: MovableKey | null = null;
+            for (let d = 0; d <= 4 && !hit; d += 1) {
+                const px = fx + d, pz = fz + d;
+                const found = keys.map(k => ({ k, r: footprint(k, spotRef(specRef.current, k)!) }))
+                    .filter(({ r }) => px > r.x0 - 0.5 && px < r.x1 + 0.5 && pz > r.z0 - 0.5 && pz < r.z1 + 0.5)
+                    .sort((a, b) => (FLAT_KEYS.has(a.k) ? 1 : 0) - (FLAT_KEYS.has(b.k) ? 1 : 0)
+                        || (a.r.x1 - a.r.x0) * (a.r.z1 - a.r.z0) - (b.r.x1 - b.r.x0) * (b.r.z1 - b.r.z0));
+                hit = found[0]?.k ?? null;
+            }
+            if (hit) {
+                setSel(hit);
+                drag.current = { key: hit, x: posRef.current[hit].x, z: posRef.current[hit].z };
+            } else {
+                drag.current = null;
+            }
+        },
+        onPanResponderMove: (_e, g) => {
+            const d = drag.current;
+            if (!d) return;
+            const a = g.dx / (C * l.kv), b = (2 * g.dy) / l.kv;
+            const size = l.room.size;
+            const x = Math.max(0, Math.min(size, snap(d.x + (a + b) / 2)));
+            const z = Math.max(0, Math.min(size, snap(d.z + (b - a) / 2)));
+            setPos(p => (p[d.key].x === x && p[d.key].z === z ? p : { ...p, [d.key]: { ...p[d.key], x, z } }));
+        },
+        onPanResponderRelease: () => { drag.current = null; },
+    }), [l, keys]);
+
+    const rotate = () => sel && setPos(p => ({ ...p, [sel]: { ...p[sel], rot: (p[sel].rot + 1) & 3 } }));
+    const reset = () => {
+        // 처음 정해진 자리로 (저장한 자리를 뺀 기본 배치)
+        const base = makeSceneLayout(l.width, ROOM_LEVEL_OF(l.room.size));
+        setPos(Object.fromEntries(keys.map(k => {
+            const sp = spotRef(base.room, k)!;
+            return [k, { x: sp.x, z: sp.z, rot: 0 }];
+        })) as typeof pos);
+    };
+
+    const FLOORD = -100;
+    const depthOf = (k: MovableKey) => {
+        const p = pos[k];
+        if (k === 'rug') return FLOORD - 1;
+        if (k === 'cushion') return FLOORD;
+        return p.x + p.z - (k === 'bowl' ? 5.2 : k === 'bed' ? 2 : k === 'bubbles' ? 1.5 : 1);
+    };
+    const partFor = (k: MovableKey) => k === 'cushion' && decor.cushion === 'cushion_blue' ? CUSHION_BLUE_PART : movablePart(k);
+    const rect = (k: MovableKey) => {
+        const r = footprint(k, spotRef(spec, k)!);
+        return [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]].map(([x, z]) => floorPoint(l, x, z).join(',')).join(' ');
+    };
+    const name = (k: MovableKey) => NAMES[k] ?? ITEMS[k]?.name ?? k;
+
+    return (
+        <View>
+            <View style={{ width: l.width, height: l.height }}>
+                <RoomShell l={l} wallpaper={decor.wallpaper} curtain={decor.items.includes('curtain')} />
+                <Svg width={l.width} height={l.height} style={StyleSheet.absoluteFill} pointerEvents="none">
+                    {keys.filter(k => k === sel || bad.has(k)).map(k => (
+                        <Polygon key={k} points={rect(k)} fill={bad.has(k) ? 'rgba(230,70,70,0.35)' : 'rgba(80,190,120,0.35)'}
+                            stroke={bad.has(k) ? '#d84a4a' : '#3fa66a'} strokeWidth={1.5} />
+                    ))}
+                </Svg>
+                {[...keys].sort((a, b) => depthOf(a) - depthOf(b)).map(k => (
+                    <PropView key={k} part={partFor(k)} at={floorPoint(l, pos[k].x, pos[k].z)} kv={l.kv} yaw={(pos[k].rot * Math.PI) / 2}
+                        tint={sel && sel !== k ? 0.75 : undefined} />
+                ))}
+                <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
+            </View>
+            <View style={styles.editBar}>
+                <Text style={styles.editHint}>
+                    {bad.size ? '빨간 물건은 겹치거나 벽에 닿았어요' : sel ? `${name(sel)} — 끌어서 옮기고 ↻ 로 돌려요` : '물건을 눌러 고르고 끌어서 옮겨요'}
+                </Text>
+                <View style={styles.editRow}>
+                    <TouchableOpacity style={[styles.editBtn, !sel && styles.editOff]} disabled={!sel} onPress={rotate}>
+                        <Text style={styles.editBtnText}>↻ 돌리기</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.editBtn} onPress={reset}>
+                        <Text style={styles.editBtnText}>처음 자리로</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.editBtn} onPress={() => onDone(null)}>
+                        <Text style={styles.editBtnText}>취소</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.editBtn, styles.editSave, bad.size > 0 && styles.editOff]} disabled={bad.size > 0}
+                        onPress={() => onDone({ ...saved, ...pos })}>
+                        <Text style={[styles.editBtnText, { color: '#fff' }]}>저장</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+    );
+}
+const ROOM_LEVEL_OF = (size: number) => Math.max(0, ROOM_SIZES.indexOf(size));
+
 // 벽·바닥 (움직이지 않는다)
 const RoomShell = React.memo(function RoomShell({ l, wallpaper, curtain }: { l: SceneLayout; wallpaper: string | null; curtain: boolean }) {
     const P = (x: number, y: number, z: number) => floorPoint(l, x, z, y).join(',');
@@ -418,20 +556,22 @@ const RoomShell = React.memo(function RoomShell({ l, wallpaper, curtain }: { l: 
 });
 
 // 소품 한 개. at: 바닥 위 놓인 자리 (화면 px). center 면 자리 대신 자기 칸 원점에 그린다
-const PropView = React.memo(function PropView({ part, at, kv, center }: { part: Part; at: [number, number]; kv: number; center?: boolean }) {
+const PropView = React.memo(function PropView({ part, at, kv, center, yaw = 0, tint }: {
+    part: Part; at: [number, number]; kv: number; center?: boolean; yaw?: number; tint?: number;
+}) {
     const { polys, box } = useMemo(() => {
-        const r = renderPart(part, 0, kv);
+        const r = renderPart(part, yaw, kv);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const p of r.polys) for (const pt of p.points.split(' ')) {
             const [x, y] = pt.split(',').map(Number);
             x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
         }
         return { polys: r.polys, box: { x0: Math.floor(x0) - 1, y0: Math.floor(y0) - 1, w: Math.ceil(x1 - x0) + 2, h: Math.ceil(y1 - y0) + 2 } };
-    }, [part, kv]);
+    }, [part, kv, yaw]);
     // 공은 가운데를 축으로 돌아야 하므로 원점 기준 상자 안에 그린다
     return (
         <Svg width={box.w} height={box.h} pointerEvents="none"
-            style={{ position: 'absolute', left: at[0] + box.x0, top: at[1] + box.y0, ...(center ? { left: box.x0, top: box.y0 } : null) }}>
+            style={{ position: 'absolute', left: at[0] + box.x0, top: at[1] + box.y0, ...(center ? { left: box.x0, top: box.y0 } : null), ...(tint !== undefined ? { opacity: tint } : null) }}>
             <G transform={`translate(${-box.x0},${-box.y0})`}>
                 {polys.map((p, i) => <Polygon key={i} points={p.points} fill={p.fill} />)}
             </G>
@@ -494,5 +634,12 @@ const styles = StyleSheet.create({
         fontSize: 15, color: '#3a4254', overflow: 'hidden',
     },
     effect: { position: 'absolute', left: -14, top: -24, width: 28, textAlign: 'center', fontSize: 22 },
+    editBar: { paddingHorizontal: 8, paddingTop: 6, gap: 8 },
+    editHint: { textAlign: 'center', fontSize: 13, color: '#5a6274' },
+    editRow: { flexDirection: 'row', gap: 6, justifyContent: 'center', flexWrap: 'wrap' },
+    editBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#d8dce4' },
+    editSave: { backgroundColor: '#3fa66a', borderColor: '#3fa66a' },
+    editOff: { opacity: 0.4 },
+    editBtnText: { fontSize: 14, color: '#3a4254', fontWeight: '600' },
 });
 
