@@ -293,7 +293,8 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.paper },
-    content: { paddingHorizontal: 20, gap: 16 },
+    // 덱스·태블릿처럼 넓은 화면에서도 폰 너비로 가운데에 (방이 너무 커지지 않게)
+    content: { paddingHorizontal: 20, gap: 16, width: '100%', maxWidth: 480, alignSelf: 'center' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     name: {
         fontFamily: fontFamilies.display,
