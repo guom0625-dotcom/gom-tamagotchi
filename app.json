@@ -11,13 +11,13 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fffaf2"
+      "backgroundColor": "#f8f5f8"
     },
     "android": {
       "package": "com.guom0625.gomtamagotchi",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffe9a8"
+        "backgroundColor": "#f8f5f8"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
