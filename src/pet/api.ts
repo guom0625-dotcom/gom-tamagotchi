@@ -18,6 +18,8 @@ export interface PetInfo {
     fullness: number;            // 0~3
     poops: Poop[];
     next_change_at: number | null;
+    /** 최근 하루 동안 자동 청소기가 치운 똥 (at = 치운 시각) */
+    robot_cleaned: { id: string; u: number; v: number; at: number }[];
     health: {
         severe: boolean;
         hungry: boolean;         // 밥도 먹어야 낫는다

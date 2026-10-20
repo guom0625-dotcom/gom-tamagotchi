@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { G, Line, Polygon } from 'react-native-svg';
+import * as SecureStore from 'expo-secure-store';
 import { C, renderPart, shade, type Part } from './voxel';
 import { bearModel, type Expr } from './bear';
 import { PetView, makePetAnims } from './PetView';
@@ -15,6 +16,8 @@ import {
 
 const WALL = '#efe4d0';
 const GADGET_PARTS = { robot: ROBOT_PART, feeder: FEEDER_PART, firstaid: FIRSTAID_PART, bed: BED_PART };
+/** 청소기 움직임을 어디까지 보여 줬는지 (앱을 다시 켜도 같은 청소를 또 보여 주지 않게) */
+const ROBOT_SEEN_KEY = 'pet_robot_seen';
 const FLOOR = '#e2c79f';
 export type Stage = 'egg' | 'baby' | 'teen' | 'adult';
 /** 단계별 펫 크기 (방 칸 기준). 방도 넓어지니 화면에서는 이보다 덜 커 보인다 */
@@ -47,6 +50,8 @@ interface Props {
     bowlFull?: boolean;                   // 밥그릇에 밥이 담겨 있다
     onAte?: () => void;                   // 펫이 밥을 다 먹었다
     decor?: RoomDecor;
+    /** 자동 청소기가 치운 똥 (서버) — 청소기가 다녀가는 모습을 보여 준다 */
+    robotCleaned?: { id: string; u: number; v: number; at: number }[];
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
 }
@@ -64,11 +69,16 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
-    const poops = useMemo<PlacedPoop[]>(() => rawPoops.map(p => ({ id: p.id, ...poopSpot(R, p.u, p.v) })), [rawPoops, R]);
+    // 청소기가 치우러 가는 동안에는 서버에서 없어진 똥도 그 자리에 남겨 둔다
+    const [ghosts, setGhosts] = useState<PlacedPoop[]>([]);
+    const poops = useMemo<PlacedPoop[]>(() => [
+        ...rawPoops.map(p => ({ id: p.id, ...poopSpot(R, p.u, p.v) })),
+        ...ghosts.filter(g => !rawPoops.some(p => p.id === g.id)),
+    ], [rawPoops, ghosts, R]);
     const [yaw, setYaw] = useState(0);
     const [expr, setExpr] = useState<Expr>('normal');
     const poopsRef = useRef(poops);
@@ -168,8 +178,96 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
 
     const clean = (p: PlacedPoop) => {
         setSparkles(list => [...list, { id: p.id, at: floorPoint(l, p.x, p.z, 2) }]);
+        if (ghosts.some(g => g.id === p.id)) { setGhosts(list => list.filter(g => g.id !== p.id)); return; }
         onClean?.(p.id);
     };
+
+    // ── 자동 청소기: 치운 똥 자리를 돌고, 한가할 땐 가끔 방을 돈다 ──
+    const hasRobot = decor.items.includes('robot') && !gone;
+    const robot = useMemo(() => {
+        const [sx, sy] = floorPoint(l, R.gadgets.robot.x, R.gadgets.robot.z);
+        return { x: new Animated.Value(sx), y: new Animated.Value(sy), pos: { x: R.gadgets.robot.x, z: R.gadgets.robot.z } };
+    }, [l]);
+    const [robotDepth, setRobotDepth] = useState(R.gadgets.robot.x + R.gadgets.robot.z);
+    const robotQueue = useRef<{ id: string; x: number; z: number }[]>([]);
+    const robotBusy = useRef(false);
+    const robotAlive = useRef(true);
+    useEffect(() => () => { robotAlive.current = false; robot.x.stopAnimation(); robot.y.stopAnimation(); }, [robot]);
+    const prevPoopIds = useRef(new Set(rawPoops.map(p => p.id)));
+
+    const drive = (x: number, z: number) => new Promise<void>(res => {
+        const dist = Math.hypot(x - robot.pos.x, z - robot.pos.z);
+        const ms = Math.max(300, dist / 5 * 1000);
+        const [sx, sy] = floorPoint(l, x, z);
+        setTimeout(() => { if (robotAlive.current) setRobotDepth(x + z); }, ms / 2);
+        robot.pos = { x, z };
+        Animated.parallel([
+            Animated.timing(robot.x, { toValue: sx, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+            Animated.timing(robot.y, { toValue: sy, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        ]).start(() => res());
+    });
+    const pause = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+
+    const runRobot = async () => {
+        if (robotBusy.current) return;
+        robotBusy.current = true;
+        try {
+            while (robotAlive.current && robotQueue.current.length) {
+                const t = robotQueue.current.shift()!;
+                await drive(t.x, t.z);
+                if (!robotAlive.current) return;
+                setSparkles(list => [...list, { id: `r${t.id}`, at: floorPoint(l, t.x, t.z, 2) }]);
+                setGhosts(list => list.filter(g => g.id !== t.id));
+                await pause(500);
+            }
+            if (robotAlive.current) await drive(R.gadgets.robot.x, R.gadgets.robot.z);
+        } finally {
+            robotBusy.current = false;
+        }
+    };
+
+    // 서버가 알려 준 청소기 청소 중 아직 안 보여 준 것을 줄 세운다
+    useEffect(() => {
+        if (!hasRobot) return;
+        let cancelled = false;
+        const prev = prevPoopIds.current;   // 바로 전까지 보이던 똥 (아래 효과가 곧 새 목록으로 바꾼다)
+        (async () => {
+            const seen = Number(await SecureStore.getItemAsync(ROBOT_SEEN_KEY).catch(() => null) ?? 0) || 0;
+            if (cancelled) return;
+            const fresh = (robotCleaned ?? []).filter(r => r.at > seen && !robotQueue.current.some(q => q.id === r.id));
+            if (!fresh.length) return;
+            const spots = fresh.map(r => ({ id: r.id, ...poopSpot(R, r.u, r.v) }));
+            // 방금까지 보이던 똥이면 청소기가 갈 때까지 남겨 둔다
+            setGhosts(list => [...list, ...spots.filter(s => prev.has(s.id) && !list.some(g => g.id === s.id))]);
+            robotQueue.current.push(...spots);
+            await SecureStore.setItemAsync(ROBOT_SEEN_KEY, String(Math.max(...fresh.map(r => r.at)))).catch(() => {});
+            void runRobot();
+        })();
+        return () => { cancelled = true; };
+    }, [robotCleaned, hasRobot]);
+    useEffect(() => { prevPoopIds.current = new Set(rawPoops.map(p => p.id)); }, [rawPoops]);
+
+    // 한가할 때 가끔 방을 한 바퀴
+    useEffect(() => {
+        if (!hasRobot) return;
+        const id = setInterval(() => {
+            if (robotBusy.current || Math.random() < 0.5) return;
+            robotBusy.current = true;
+            void (async () => {
+                try {
+                    for (let i = 0; i < 2 && robotAlive.current; i++) {
+                        await drive(R.walkMin + Math.random() * (R.walkMax - R.walkMin), R.walkMin + Math.random() * (R.walkMax - R.walkMin));
+                        await pause(400);
+                    }
+                    if (robotAlive.current) await drive(R.gadgets.robot.x, R.gadgets.robot.z);
+                } finally {
+                    robotBusy.current = false;
+                    if (robotQueue.current.length) void runRobot();
+                }
+            })();
+        }, 45_000);
+        return () => clearInterval(id);
+    }, [hasRobot]);
 
     const cushionAt = useMemo(() => floorPoint(l, R.cushion.x, R.cushion.z), [l]);
     const eggAt = useMemo(() => floorPoint(l, R.cushion.x, R.cushion.z, 1.2), [l]);
@@ -191,7 +289,14 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         ...(has('bubbles') ? [{ depth: T.bubbles.x + T.bubbles.z - 1.5, el: <PropView key="bubbles" part={BUBBLES_PART} at={at(T.bubbles)} kv={l.kv} /> }] : []),
         ...(has('tunnel') ? [{ depth: T.tunnel.x + T.tunnel.z, el: <PropView key="tunnel" part={TUNNEL_PART} at={at(T.tunnel)} kv={l.kv} /> }] : []),
         ...(has('slide') ? [{ depth: T.slide.x + T.slide.z, el: <PropView key="slide" part={SLIDE_PART} at={at(T.slide)} kv={l.kv} /> }] : []),
-        ...GADGET_KEYS.filter(has).map(k => ({
+        ...(hasRobot ? [{
+            depth: robotDepth - 0.5, el: (
+                <Animated.View key="robot" pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, transform: [{ translateX: robot.x }, { translateY: robot.y }] }}>
+                    <PropView part={ROBOT_PART} at={origin} kv={l.kv} center />
+                </Animated.View>
+            ),
+        }] : []),
+        ...GADGET_KEYS.filter(k => k !== 'robot' && has(k)).map(k => ({
             depth: R.gadgets[k].x + R.gadgets[k].z - (k === 'bed' ? 2 : 1),
             el: <PropView key={k} part={GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} />,
         })),

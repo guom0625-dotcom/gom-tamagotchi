@@ -204,7 +204,8 @@ export function HomeScreen() {
                 {pet && data && (
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
                         poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
-                        decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }} />
+                        decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
+                        robotCleaned={pet.robot_cleaned} />
                 )}
             </View>
 
