@@ -33,6 +33,7 @@ const ERRORS: Record<string, string> = {
     already_hospital: '오늘은 병원에 다녀왔어요',
     too_many_snacks: '간식은 하루 2번까지예요',
     room_full: '방이 꽉 찼어요. 다른 걸 창고에 넣어 주세요',
+    sick_in_use: '아픈 동안은 침대와 구급상자를 창고에 넣을 수 없어요',
     helper_cooldown: '돌봄 도우미는 일주일에 1번이에요',
     no_missed_day: '채울 빠진 날이 없어요',
     already_owned: '벌써 가지고 있어요',
