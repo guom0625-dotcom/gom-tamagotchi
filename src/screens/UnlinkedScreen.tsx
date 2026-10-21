@@ -34,7 +34,7 @@ export function UnlinkedScreen() {
             </Pressable>
             <Text style={styles.title}>gomTamagotchi</Text>
             <View style={styles.card}>
-                <Text style={styles.body}>숙제앱에서{'\n'}<Text style={styles.strong}>🐣 다마고치</Text> 버튼을 눌러 주세요</Text>
+                <Text style={styles.body}>숙제앱의 <Text style={styles.strong}>🐾 우리 펫</Text>에서{'\n'}<Text style={styles.strong}>🐣 펫 앱에서 돌보기</Text>를 눌러 주세요</Text>
                 <Text style={styles.sub}>숙제앱 계정으로 바로 들어와요</Text>
             </View>
             {linkError && <Text style={styles.error}>{linkError}</Text>}

@@ -80,7 +80,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await get().refresh();
         } catch (e) {
             const msg = e instanceof ApiError
-                ? (e.status === 429 ? '잠시 뒤에 다시 해 주세요' : '연결 코드가 만료됐어요. 숙제앱에서 🐣 버튼을 다시 눌러 주세요')
+                ? (e.status === 429 ? '잠시 뒤에 다시 해 주세요' : '연결 코드가 만료됐어요. 숙제앱의 🐾 우리 펫에서 🐣 펫 앱에서 돌보기를 다시 눌러 주세요')
                 : '서버에 연결하지 못했어요. 인터넷을 확인하고 숙제앱에서 다시 눌러 주세요';
             set({ linkError: msg });
             // 이미 연결된 계정이 있으면 그대로 쓴다
