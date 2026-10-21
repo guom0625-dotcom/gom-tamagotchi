@@ -25,7 +25,7 @@ export const ITEMS: Record<string, ItemInfo> = {
     robot: { emoji: '🤖', name: '자동 청소기', desc: '하루 1번 똥을 치워 줘요 (청소한 날로는 안 세요)', kind: 'gadget' },
     feeder: { emoji: '🍽️', name: '자동 급식기', desc: '밥을 깜빡하면 밤 9시에 줘요 (🔶3, 밥 준 날로는 안 세요)', kind: 'gadget' },
     firstaid: { emoji: '🩺', name: '구급상자', desc: '중병이 되기까지 하루 더 버텨요', kind: 'gadget' },
-    bed: { emoji: '🛏️', name: '포근한 침대', desc: '아파도 하루 더 곁에 있어요', kind: 'gadget' },
+    bed: { emoji: '🛏️', name: '포근한 침대', desc: '침대에서 이불 덮고 자요. 아파도 하루 더 곁에 있어요', kind: 'gadget' },
 };
 
 /** 방에 꺼내 놓는 물건 (창고 자리 수를 차지한다) */

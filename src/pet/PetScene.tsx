@@ -11,7 +11,7 @@ import { PetBrain, type PetMode } from './brain';
 import {
     makeSceneLayout, floorPoint, ROOM_SIZES, poopSpot, WALL_H, CUSHION_PART, BOWL_PART, BOWL_FULL_PART, BALL_PART, POOP_PART, LETTER_PART, EGG_PART,
     DOLL_PART, BUBBLES_PART, TUNNEL_PART, SLIDE_PART, RUG_PART, PLANT_PART, CUSHION_BLUE_PART, WALLPAPERS, TOY_KEYS,
-    ROBOT_PART, FEEDER_PART, FIRSTAID_PART, BED_PART, GADGET_KEYS,
+    ROBOT_PART, FEEDER_PART, FIRSTAID_PART, BED_PART, BED_BASE_PART, bedCoverPart, GADGET_KEYS,
     MOVABLE_KEYS, FLAT_KEYS, spotRef, footprint, layoutProblems, floorAt, movablePart,
     type SceneLayout, type ToyKey, type RoomLayout, type MovableKey, type Spot,
 } from './room';
@@ -79,11 +79,13 @@ export function PetScene(props: Props) {
     const placeKey = JSON.stringify(props.placement ?? {});
     const layout = useMemo(() => makeSceneLayout(width, props.roomLevel, props.placement), [width, props.roomLevel, placeKey]);
     const who = props.gone ? 'gone' : props.stage;
+    // 침대를 꺼내거나 넣으면 처음부터 (누워 있던 펫이 공중에 뜨지 않게)
+    const bedKey = props.decor?.items.includes('bed') ? 'bed' : '';
     return (
         <View onLayout={onLayout} style={{ width: '100%' }}>
             {width > 0 && (props.editing
                 ? <EditRoom l={layout} decor={props.decor ?? NO_DECOR} saved={props.placement ?? {}} onDone={props.onEditDone ?? (() => {})} />
-                : <Room key={`${width}:${props.roomLevel}:${who}:${placeKey}`} layout={layout} {...props} />)}
+                : <Room key={`${width}:${props.roomLevel}:${who}:${placeKey}:${bedKey}`} layout={layout} {...props} />)}
         </View>
     );
 }
@@ -122,6 +124,19 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     // 돌아다닐 때 피할 물건 (장난감은 brain 이 따로 안다)
     const obstaclesRef = useRef<{ x: number; z: number; r: number }[]>([]);
     obstaclesRef.current = GADGET_KEYS.filter(k => decor.items.includes(k)).map(k => R.gadgets[k]);
+    // 침대: 있으면 거기서 자고 아플 때 눕는다. 올라가 있으면 이불을 펫 앞에 덮어 그린다
+    const bedRef = useRef<Spot | null>(null);
+    bedRef.current = decor.items.includes('bed') && !gone ? R.gadgets.bed : null;
+    const [inBed, setInBed] = useState(false);
+    const bedCover = useMemo(() => {
+        if (stage === 'egg' || !isSpecies(species)) return null;
+        // 이불은 펫 가슴 앞에서 시작해 턱 아래까지 (preview 로 맞춘 값)
+        const m = petModel(species, variant ?? 0, 'normal', stage, outfit);
+        let front = 0;
+        for (const b of m.parts.body.boxes) front = Math.max(front, b.b[5]);
+        const s = STAGE_SCALE[stage];
+        return bedCoverPart((front - 0.6) * s, (m.neckY - 1.5) * s * 0.6);
+    }, [species, variant, stage, outfit?.top, outfit?.hat]);
 
     // 공 위치와 굴러가는 회전
     const ball = useMemo(() => {
@@ -141,6 +156,8 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         toys: () => toysRef.current,
         obstacles: () => obstaclesRef.current,
         setHidden,
+        bed: () => bedRef.current,
+        setInBed,
         effectAt: (x, z, y, emoji) => setFloats(list => [...list.slice(-5), { id: ++effectId.current, at: floorPoint(l, x, z, y), emoji }]),
         moveBall: (x, z, ms) => new Promise(res => {
             const [sx, sy] = floorPoint(l, x, z);
@@ -318,8 +335,20 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         }] : []),
         ...GADGET_KEYS.filter(k => k !== 'robot' && has(k)).map(k => ({
             depth: R.gadgets[k].x + R.gadgets[k].z - (k === 'bed' ? 2 : 1),
-            el: <PropView key={k} part={GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} yaw={rotOf(R.gadgets[k])} />,
+            el: <PropView key={k} part={k === 'bed' && inBed ? BED_BASE_PART : GADGET_PARTS[k]} at={at(R.gadgets[k])} kv={l.kv} yaw={rotOf(R.gadgets[k])} />,
         })),
+        // 침대에 누운 펫을 덮는 이불 (펫 바로 다음에 그린다)
+        ...(has('bed') && inBed && bedCover ? [{
+            depth: R.gadgets.bed.x + R.gadgets.bed.z - 2 + 0.6,
+            el: (
+                // 숨 쉴 때 이불이 살짝 오르내린다
+                <Animated.View key="bedCover" pointerEvents="none" style={[StyleSheet.absoluteFill, {
+                    transform: [{ translateY: a.breath.interpolate({ inputRange: [0, 1], outputRange: [0, -0.3 * C * l.kv] }) }],
+                }]}>
+                    <PropView part={bedCover} at={at(R.gadgets.bed)} kv={l.kv} yaw={rotOf(R.gadgets.bed)} />
+                </Animated.View>
+            ),
+        }] : []),
         { depth: R.bowl.x + R.bowl.z - 5.2, el: <PropView key="bowl" part={bowlFull ? BOWL_FULL_PART : BOWL_PART} at={bowlAt} kv={l.kv} yaw={rotOf(R.bowl)} /> },
         {
             depth: ballDepth, el: (
@@ -347,7 +376,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         } : hidden ? {
             depth: FLOOR, el: null,
         } : {
-            depth: petDepth + 0.5, el: (
+            depth: inBed && has('bed') ? R.gadgets.bed.x + R.gadgets.bed.z - 2 + 0.3 : petDepth + 0.5, el: (
                 <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={viewOnly ? undefined : () => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />

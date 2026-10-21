@@ -87,7 +87,7 @@ function defaultSpec(size: number): RoomSpec {
             robot: { x: size - 3.6, z: size - 3.6, r: 2 },
             feeder: { x: size - 8, z: 3.2, r: 2 },
             firstaid: { x: 2.6, z: size - 4, r: 2 },
-            bed: { x: 17, z: size - 3.5, r: 3 },
+            bed: { x: 17.5, z: size - 10, r: 5, rot: 3 },   // 머리판이 뒤(작은 z)로
         },
     };
 }
@@ -360,17 +360,38 @@ export const FIRSTAID_PART: Part = {
 };
 
 // 포근한 침대: 나무 틀에 이불과 베개
+// 침대: 길이는 기준 x -5~5 (머리판이 x = -5), 폭은 z -4~4. 펫이 앉아 잘 수 있게 쿠션만 하다.
+// 펫이 누우면 납작한 이불 대신 몸을 덮는 볼록한 이불(bedCoverPart)을 펫 앞에 그린다.
+export const BED_TOP = 2;                              // 매트리스 윗면 높이
+export const BED_SEAT: [number, number] = [-2.2, 0];   // 펫이 앉는 자리 (베개 바로 앞)
+const BED_FRAME = [
+    box(-5, 0, -4, 5, 1.2, 4, '#C8956A'),
+    box(-5, 1.2, -4, -4.3, 4.8, 4, '#B5794F'),          // 머리판
+    box(4.5, 1.2, -4, 5, 2.8, 4, '#B5794F'),            // 발판
+    box(-4.3, 1.2, -3.7, 4.5, BED_TOP, 3.7, '#FFFFFF'), // 매트리스
+    box(-4.2, BED_TOP, -2.6, -2.7, BED_TOP + 0.9, 2.6, '#FFF3D6'), // 베개
+];
+export const BED_BASE_PART: Part = { boxes: BED_FRAME, pivot: [0, 0, 0] };
 export const BED_PART: Part = {
     boxes: [
-        box(-2.5, 0, -1.8, 2.5, 0.8, 1.8, '#C8956A'),
-        box(-2.5, 0.8, -1.8, -2.1, 2.4, 1.8, '#B5794F'),
-        box(-2.1, 0.8, -1.6, 2.4, 1.3, 1.6, '#FFFFFF'),
-        box(-2, 1.3, -1.4, -0.9, 1.8, 1.4, '#FFF3D6'),
-        box(-0.6, 1.3, -1.6, 2.4, 1.6, 1.6, '#8EC5FF'),
-        box(-0.6, 1.6, -1.2, 2.2, 1.7, 1.2, '#A8D4FF'),
+        ...BED_FRAME,
+        box(-2.3, BED_TOP, -3.85, 4.5, BED_TOP + 0.5, 3.85, '#8EC5FF'),
+        box(-2.3, BED_TOP + 0.5, -3.5, -1.5, BED_TOP + 0.6, 3.5, '#FFFFFF'),   // 접힌 이불 끝
     ],
     pivot: [0, 0, 0],
 };
+/** 펫이 누웠을 때 몸을 덮는 이불. front = 앉은 자리에서 펫 가슴까지(칸), h = 매트리스 위로 덮는 높이.
+ *  이불은 펫보다 나중에 그리므로 펫 뒤로 넘어가면 얼굴을 가린다 — 가슴 앞에서 시작한다 */
+export function bedCoverPart(front: number, h: number): Part {
+    const x0 = Math.min(3.5, BED_SEAT[0] + front);
+    return {
+        boxes: [
+            box(x0, BED_TOP, -3.85, 4.5, BED_TOP + h, 3.85, '#8EC5FF'),
+            box(x0, BED_TOP + h, -3.5, x0 + 0.9, BED_TOP + h + 0.12, 3.5, '#FFFFFF'),
+        ],
+        pivot: [0, 0, 0],
+    };
+}
 
 // ── 꾸미기: 바닥에서 차지하는 자리 ─────────────────
 /** 납작해서 다른 물건이 위에 올라가도 되는 것 */

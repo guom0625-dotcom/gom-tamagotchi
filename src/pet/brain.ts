@@ -6,7 +6,7 @@ import type { PetAnims } from './PetView';
 import type { Expr } from './model';
 import { yawToward, C } from './voxel';
 import { FACE_CAMERA, YAW_STEPS, yawIndex } from './layers';
-import { SLIDE_TOP, toWorld, type RoomSpec, type SceneLayout, type ToyKey } from './room';
+import { BED_SEAT, BED_TOP, SLIDE_TOP, toWorld, type RoomSpec, type SceneLayout, type Spot, type ToyKey } from './room';
 
 export type Mood = 'happy' | 'normal' | 'sad' | 'angry';
 export type Rest = 'hungry' | 'sleep' | 'sick';
@@ -27,6 +27,8 @@ export interface BrainEnv {
     obstacles: () => { x: number; z: number; r: number }[];   // 그 밖에 피해 다닐 물건
     setHidden: (hidden: boolean) => void;            // 터널 속·병원에 가서 안 보일 때
     effectAt: (x: number, z: number, y: number, emoji: string) => void;   // 방 안 아무 데나 떠오르는 그림
+    bed: () => Spot | null;                          // 방에 꺼내 놓은 침대 (없으면 쿠션에서 잔다)
+    setInBed: (v: boolean) => void;                  // 침대에 올라가 있다 (이불을 덮어 그린다)
 }
 
 class Cancelled extends Error {}
@@ -86,6 +88,7 @@ export class PetBrain {
     private disposed = false;
     private started = false;
     private taps: number[] = [];
+    private inBed = false;
     private pokeAngryUntil = 0;
 
     constructor(private a: PetAnims, private env: BrainEnv) {
@@ -100,8 +103,10 @@ export class PetBrain {
     start(mode: PetMode) {
         this.started = true;
         this.mode = mode;
-        // 자는 시간에 앱을 열었으면 처음부터 쿠션 위에 있다
-        if (mode === 'sleep') this.placeAt(this.R.cushion.x, this.R.cushion.z); else this.placeAt(this.x, this.z);
+        // 자는 시간에 앱을 열었으면 처음부터 침대(없으면 쿠션) 위에 있다. 아플 때도 침대가 있으면 누워 있다
+        const bed = this.bedFor(mode);
+        if (bed) this.placeInBed(bed);
+        else if (mode === 'sleep') this.placeAt(this.R.cushion.x, this.R.cushion.z); else this.placeAt(this.x, this.z);
         this.env.setYaw(this.yaw);
         this.startAmbient();
         this.restart(true);
@@ -149,6 +154,7 @@ export class PetBrain {
         void (async () => {
             try {
                 if (!first) await this.stopWhereYouAre();
+                await this.outOfBed(m, t);
                 // 밥이 담겨 있으면 먼저 먹는다 (자거나 아플 때는 그릇에 남겨 둔다)
                 const eat = this.env.bowlFull() && m !== 'sleep' && m !== 'sick';
                 if (eat) {
@@ -233,7 +239,7 @@ export class PetBrain {
         const c = this.cfg;
         return this.play(Animated.parallel([
             this.to(this.a.eyes, 1, 150), this.to(this.a.sit, 0, 250), this.to(this.a.headDip, c.headBase, 250),
-            this.to(this.a.headTilt, 0, 200), this.to(this.a.hop, 0, 120), this.to(this.a.droop, c.droop, 400),
+            this.to(this.a.headTilt, 0, 200), this.to(this.a.hop, this.ground, 120), this.to(this.a.droop, c.droop, 400),
             this.to(this.a.wave, 0, 200),
         ]), t);
     }
@@ -275,10 +281,10 @@ export class PetBrain {
     }
 
     private hop(height: number, t: number) {
-        const h = -height * C * this.env.layout.kv;
+        const h = this.ground - height * C * this.env.layout.kv;
         return this.play(Animated.sequence([
             Animated.timing(this.a.hop, { toValue: h, duration: 170, easing: Easing.out(Easing.quad), ...native }),
-            Animated.timing(this.a.hop, { toValue: 0, duration: 170, easing: Easing.in(Easing.quad), ...native }),
+            Animated.timing(this.a.hop, { toValue: this.ground, duration: 170, easing: Easing.in(Easing.quad), ...native }),
         ]), t);
     }
 
@@ -480,7 +486,12 @@ export class PetBrain {
 
     // ── 배고픔·잠·아픔: 제자리에서 숨만 쉰다 ──────────
     private async rest(m: Rest, t: number) {
-        if (m === 'sleep') {
+        const bed = this.bedFor(m);
+        if (bed) {
+            // 침대로 가서 이불을 덮는다 (자거나 아플 때)
+            if (!this.inBed) await this.intoBed(bed, t, m === 'sleep');
+            await this.faceToward(...toWorld(bed, 5, 0), t);
+        } else if (m === 'sleep') {
             // 쿠션으로 천천히 가서 잔다
             if (Math.hypot(this.x - this.R.cushion.x, this.z - this.R.cushion.z) > 1) {
                 await this.play(this.to(this.a.droop, 0.4, 300), t);
@@ -492,7 +503,7 @@ export class PetBrain {
         await this.play(Animated.parallel([
             this.to(this.a.sit, 1, 600), this.to(this.a.eyes, 1, 200), this.to(this.a.wave, 0, 200),
             this.to(this.a.headDip, m === 'sleep' ? 0.5 : 0.4, 600), this.to(this.a.headTilt, 0, 300),
-            this.to(this.a.droop, m === 'sleep' ? 0.4 : 1, 600), this.to(this.a.hop, 0, 120),
+            this.to(this.a.droop, m === 'sleep' ? 0.4 : 1, 600), this.to(this.a.hop, this.ground, 120),
         ]), t);
         try {
             for (;;) {
@@ -522,6 +533,86 @@ export class PetBrain {
         }
     }
 
+    // ── 침대 ────────────────────────────────
+    /** 침대에 올라가 있으면 펫의 바닥 높이 (px, 위가 음수) */
+    private get ground() {
+        return this.inBed ? -BED_TOP * C * this.env.layout.kv : 0;
+    }
+
+    /** 이 상태면 누울 침대 (잠·아픔 + 침대를 꺼내 놓았을 때) */
+    private bedFor(m: PetMode): Spot | null {
+        return m === 'sleep' || m === 'sick' ? this.env.bed() : null;
+    }
+
+    /** 침대 옆 오르내리는 자리: 양옆 중 화면 앞쪽(x + z 가 큰 쪽) */
+    private bedSide(bed: Spot): [number, number] {
+        const a = toWorld(bed, BED_SEAT[0], 5.6), b = toWorld(bed, BED_SEAT[0], -5.6);
+        const [x, z] = a[0] + a[1] >= b[0] + b[1] ? a : b;
+        const R = this.R, lim = (v: number) => Math.max(R.walkMin, Math.min(R.walkMax, v));
+        return [lim(x), lim(z)];
+    }
+
+    private setInBed(v: boolean) {
+        this.inBed = v;
+        this.env.setInBed(v);
+    }
+
+    /** 앱을 열었을 때 이미 누워 있다 */
+    private placeInBed(bed: Spot) {
+        const [x, z] = toWorld(bed, ...BED_SEAT);
+        this.placeAt(x, z);
+        this.setInBed(true);
+        this.a.hop.setValue(this.ground);
+        const [fx, fz] = toWorld(bed, 5, 0);
+        this.yaw = yawIndex(yawToward(fx - x, fz - z));
+    }
+
+    /** 침대 옆까지 걸어가 폴짝 올라가 앉는다 */
+    private async intoBed(bed: Spot, t: number, sleepy: boolean) {
+        const side = this.bedSide(bed);
+        if (sleepy) await this.play(this.to(this.a.droop, 0.4, 300), t);
+        await this.walkTo(...side, t, sleepy ? 3 : undefined);
+        const [x, z] = toWorld(bed, ...BED_SEAT);
+        await this.faceToward(x, z, t);
+        const [sx, sy] = this.screen(x, z);
+        this.setInBed(true);
+        const up = this.ground, kv = this.env.layout.kv;
+        await this.play(Animated.parallel([
+            this.to(this.a.posX, sx, 420), this.to(this.a.posY, sy, 420),
+            Animated.sequence([
+                Animated.timing(this.a.hop, { toValue: up - 2.5 * C * kv, duration: 210, easing: Easing.out(Easing.quad), ...native }),
+                Animated.timing(this.a.hop, { toValue: up, duration: 210, easing: Easing.in(Easing.quad), ...native }),
+            ]),
+        ]), t);
+        this.x = x; this.z = z;
+    }
+
+    /** 침대에 있는데 이제 누울 때가 아니면 이불을 걷고 내려와 기지개를 켠다 */
+    private async outOfBed(m: PetMode, t: number) {
+        if (!this.inBed || this.bedFor(m)) return;
+        const bed = this.env.bed();
+        const [x, z] = bed ? this.bedSide(bed) : [this.x, this.z];
+        await this.play(Animated.parallel([this.to(this.a.sit, 0, 250), this.to(this.a.eyes, 1, 150)]), t);
+        await this.faceToward(x, z, t);
+        const [sx, sy] = this.screen(x, z);
+        const kv = this.env.layout.kv;
+        await this.play(Animated.parallel([
+            this.to(this.a.posX, sx, 420), this.to(this.a.posY, sy, 420),
+            Animated.sequence([
+                Animated.timing(this.a.hop, { toValue: this.ground - 2 * C * kv, duration: 210, easing: Easing.out(Easing.quad), ...native }),
+                Animated.timing(this.a.hop, { toValue: 0, duration: 210, easing: Easing.in(Easing.quad), ...native }),
+            ]),
+        ]), t);
+        this.x = x; this.z = z;
+        this.setInBed(false);
+        this.env.setPetDepth(x + z);
+        // 기지개
+        await this.turnTo(FACE_CAMERA, t);
+        await this.play(Animated.parallel([this.to(this.a.headDip, -0.5, 350), this.to(this.a.wave, 1, 350)]), t);
+        await this.wait(400, t);
+        await this.play(Animated.parallel([this.to(this.a.headDip, 0, 300), this.to(this.a.wave, 0, 300)]), t);
+    }
+
     // ── 주인이 부른다 ──────────────────────────
     async call() {
         if (this.disposed) return;
@@ -546,6 +637,7 @@ export class PetBrain {
         this.env.setExpr(cur);
         try {
             await this.stopWhereYouAre();
+            await this.outOfBed(cur, t);
             if (isRest(cur)) {
                 await this.restCall(cur, t);
                 await this.rest(cur, t);
@@ -553,7 +645,7 @@ export class PetBrain {
             }
             await this.play(Animated.parallel([
                 this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.headDip, this.cfg.headBase, 150),
-                this.to(this.a.headTilt, 0, 150), this.to(this.a.hop, 0, 100),
+                this.to(this.a.headTilt, 0, 150), this.to(this.a.hop, this.ground, 100),
             ]), t);
 
             if (cur === 'angry') {
@@ -748,8 +840,9 @@ export class PetBrain {
         const t = this.token;
         try {
             await this.stopWhereYouAre();
+            await this.outOfBed(this.current, t);
             await this.play(Animated.parallel([
-                this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.hop, 0, 100), this.to(this.a.wave, 0, 150),
+                this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.hop, this.ground, 100), this.to(this.a.wave, 0, 150),
             ]), t);
             await fn(t);
             const cur = this.current;
@@ -769,6 +862,7 @@ export class PetBrain {
         const cur = this.current;
         try {
             await this.stopWhereYouAre();
+            await this.outOfBed(cur, t);
             if (isRest(cur)) {
                 // 자거나 아프거나 배고프면 하트만 띄우고 하던 대로
                 this.env.effect('💕');
@@ -778,7 +872,7 @@ export class PetBrain {
             }
             this.env.setExpr('happy');
             await this.play(Animated.parallel([
-                this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.headDip, 0, 150), this.to(this.a.hop, 0, 100),
+                this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.headDip, 0, 150), this.to(this.a.hop, this.ground, 100),
             ]), t);
             await this.turnTo(FACE_CAMERA, t);
             this.env.effect('💕');
