@@ -198,7 +198,7 @@ export function HomeScreen() {
                 <Pressable onPress={tapName} style={{ flexShrink: 1 }}>
                     <Text style={styles.name}>{me.name}</Text>
                 </Pressable>
-                <Price diamonds={me.diamonds} topaz={me.topaz} size={18} showZero />
+                <Price diamonds={me.diamonds} rubies={me.rubies} topaz={me.topaz} size={18} showZero />
             </View>
 
             {linkError && <Text style={styles.error}>{linkError}</Text>}
@@ -364,7 +364,7 @@ export function HomeScreen() {
                 </View>
             )}
 
-            <Button variant="sun" label="💎 → 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
+            <Button variant="sun" label="💎❤️ → 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
 
             <TopazExchangeModal visible={exchangeOpen} onClose={() => setExchangeOpen(false)} />
             {data && (

@@ -8,6 +8,7 @@ export interface Me {
     id: string;
     name: string;
     diamonds: number;
+    rubies: number;
     topaz: number;
 }
 
@@ -27,12 +28,12 @@ interface AuthState {
     init: () => Promise<void>;
     refresh: () => Promise<void>;
     linkWithCode: (code: string) => Promise<void>;
-    setGems: (g: { diamonds: number; topaz: number }) => void;
+    setGems: (g: { diamonds: number; topaz: number; rubies?: number }) => void;
 }
 
 const fetchMe = async (): Promise<Me> => {
     const me = await api<Me & { role: string }>('/me');
-    return { id: me.id, name: me.name, diamonds: me.diamonds ?? 0, topaz: me.topaz ?? 0 };
+    return { id: me.id, name: me.name, diamonds: me.diamonds ?? 0, rubies: me.rubies ?? 0, topaz: me.topaz ?? 0 };
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -88,8 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
     },
 
-    setGems: ({ diamonds, topaz }) => {
+    setGems: ({ diamonds, topaz, rubies }) => {
         const me = get().me;
-        if (me) set({ me: { ...me, diamonds, topaz } });
+        if (me) set({ me: { ...me, diamonds, topaz, rubies: rubies ?? me.rubies } });
     },
 }));
