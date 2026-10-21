@@ -124,9 +124,9 @@ export function HomeScreen() {
         // 알이 깨어나면 무엇이 나왔는지 보여 주고 이름을 묻는다
         if (await act('/pet/grow') && egg) setNaming('hatch');
     };
-    // 졸업: 도감에 남기고 새 알을 받는다 (방·물건은 그대로)
+    // 졸업: 도감에 남기고 새 알을 받는다. 방은 작은 방으로, 물건은 모두 창고로
     const graduate = () => {
-        Alert.alert(`🎓 ${withIGa(petName)} 졸업할까요?`, '도감에 남고, 새 알을 받아요. 방과 물건은 그대로예요.', [
+        Alert.alert(`🎓 ${withIGa(petName)} 졸업할까요?`, '도감에 남고 새 알을 받아요.\n방은 작은 방으로 돌아가고, 물건은 모두 창고에 들어가요.', [
             { text: '아직이요', style: 'cancel' },
             { text: '졸업시키기', onPress: async () => { if (await act('/pet/graduate')) { askedName.current = false; setDexOpen(true); } } },
         ]);
