@@ -364,7 +364,7 @@ export function HomeScreen() {
                 </View>
             )}
 
-            <Button variant="sun" label="💎❤️ → 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
+            <Button variant="sun" label="💎 보석을 🔶 토파즈로 바꾸기" onPress={() => setExchangeOpen(true)} style={{ alignSelf: 'center' }} />
 
             <TopazExchangeModal visible={exchangeOpen} onClose={() => setExchangeOpen(false)} />
             {data && (
