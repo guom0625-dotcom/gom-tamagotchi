@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, AppState, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Alert, AppState, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { api, ApiError } from '../api/client';
@@ -9,6 +9,7 @@ import { TopazExchangeModal } from '../components/TopazExchangeModal';
 import { NameModal } from '../components/NameModal';
 import { isSpecies, lookTitle } from '../pet/species';
 import { ShopModal } from '../components/ShopModal';
+import { DexModal } from '../components/DexModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
 import type { Cond, GrowCond, PetResponse } from '../pet/api';
@@ -39,6 +40,7 @@ const ERRORS: Record<string, string> = {
     already_owned: '벌써 가지고 있어요',
     room_not_ready: '더 잘 돌봐 주면 방을 넓힐 수 있어요',
     not_owned: '이 옷은 지금 몸에 안 맞아요',
+    not_adult: '성인이 되어야 졸업할 수 있어요',
 };
 
 /** 잠자는 시간 (한국 시각): 밤 0~7시, 낮 9~16시. 주말도 같다 */
@@ -56,6 +58,7 @@ export function HomeScreen() {
     const insets = useSafeAreaInsets();
     const [exchangeOpen, setExchangeOpen] = useState(false);
     const [shopOpen, setShopOpen] = useState(false);
+    const [dexOpen, setDexOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const scrollRef = useRef<ScrollView>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -120,6 +123,13 @@ export function HomeScreen() {
     const grow = async () => {
         // 알이 깨어나면 무엇이 나왔는지 보여 주고 이름을 묻는다
         if (await act('/pet/grow') && egg) setNaming('hatch');
+    };
+    // 졸업: 도감에 남기고 새 알을 받는다 (방·물건은 그대로)
+    const graduate = () => {
+        Alert.alert(`🎓 ${withIGa(petName)} 졸업할까요?`, '도감에 남고, 새 알을 받아요. 방과 물건은 그대로예요.', [
+            { text: '아직이요', style: 'cancel' },
+            { text: '졸업시키기', onPress: async () => { if (await act('/pet/graduate')) { askedName.current = false; setDexOpen(true); } } },
+        ]);
     };
     const submitName = async (name: string) => {
         if (await act('/pet/name', { name })) setNaming(null);
@@ -253,6 +263,7 @@ export function HomeScreen() {
                             </>
                         )}
                         <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
+                        {data.dex && <Button variant="ghost" size="sm" label={`📖 도감 ${data.dex.pets.length > 0 ? new Set(data.dex.pets.map(d => `${d.species}:${d.variant}`)).size : 0}/${data.dex.total}`} onPress={() => setDexOpen(true)} />}
                     </View>
                     {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(heldFullness ?? pet.fullness)}{'🤍'.repeat(3 - (heldFullness ?? pet.fullness))}</Text>}
                     {msg && <Text style={styles.error}>{msg}</Text>}
@@ -281,7 +292,12 @@ export function HomeScreen() {
                     {/* 성장 — 아이에게는 무엇이 몇 번 남았는지 보이지 않는다 */}
                     <View style={styles.box}>
                         {!pet.growth.next ? (
-                            <Text style={styles.boxTitle}>🎉 {withIGa(petName)} 다 자랐어요!</Text>
+                            <>
+                                <Text style={styles.boxTitle}>🎉 {withIGa(petName)} 다 자랐어요!</Text>
+                                <Text style={styles.boxNote}>졸업하면 도감에 남고 새 알을 받아요. 더 키워도 돼요</Text>
+                                <Button variant="coral" disabled={busy || !!h} style={{ alignSelf: 'center', marginTop: 4 }}
+                                    label="🎓 졸업시키기" onPress={graduate} />
+                            </>
                         ) : tester && showConds && pet.growth.conds.length > 0 ? (
                             <>
                                 <Text style={styles.boxTitle}>
@@ -371,6 +387,7 @@ export function HomeScreen() {
                 <ShopModal visible={shopOpen} data={data} busy={busy} act={act}
                     onSnack={emoji => setTimeout(() => ctrl.current?.snack(emoji), 300)} onClose={() => setShopOpen(false)} />
             )}
+            {data?.dex && <DexModal visible={dexOpen} pets={data.dex.pets} total={data.dex.total} onClose={() => setDexOpen(false)} />}
             <NameModal
                 visible={naming !== null}
                 title={naming === 'hatch' ? `🐣 ${withIGa(speciesName)} 태어났어요!` : '이름 바꾸기'}

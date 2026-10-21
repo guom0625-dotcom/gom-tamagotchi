@@ -40,12 +40,17 @@ export interface PetInfo {
     growth: { next: Stage | null; ready: boolean; conds: GrowCond[]; room_short?: boolean };
 }
 
+/** 도감에 남은 졸업한 펫 */
+export interface DexPet { species: string; variant: number; name: string | null; at: number }
+
 export interface PetResponse {
     pet: PetInfo;
     room: { level: number; max: number; next_price: number | null; slots: number; used: number;
         /** 방 말고 다른 성장 조건을 다 채워서 방을 넓힐 수 있다 */
         can_upgrade: boolean };
     items: { key: string; placed: boolean }[];
+    /** 도감 (옛 서버는 안 보낸다). total = 모을 수 있는 종류·무늬 가짓수 */
+    dex?: { pets: DexPet[]; total: number };
     decor: { wallpaper: string | null; cushion: string | null };
     /** 꾸미기로 정한 물건 자리 (없는 물건은 기본 자리) */
     layout: Record<string, { x: number; z: number; rot: number }>;
