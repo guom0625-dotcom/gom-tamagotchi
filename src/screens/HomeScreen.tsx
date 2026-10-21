@@ -12,11 +12,14 @@ import { ShopModal } from '../components/ShopModal';
 import { DexModal } from '../components/DexModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
+import type { Build } from '../pet/model';
 import type { Cond, GrowCond, PetResponse } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 
 const STAGE_NAME: Record<Stage, string> = { egg: '알', baby: '유아', teen: '청소년', adult: '성인' };
 const ROOM_NAME = ['작은 방', '중간 방', '큰 방'];
+const BUILD_NAME: Record<Build, string> = { thin: '홀쭉', normal: '보통', chubby: '통통', fat: '뚱뚱' };
+const BUILDS: Build[] = ['thin', 'normal', 'chubby', 'fat'];
 
 const ERRORS: Record<string, string> = {
     insufficient_gems: '토파즈가 모자라요',
@@ -147,6 +150,7 @@ export function HomeScreen() {
     const tester = !!data?.tester;
     const [testOpen, setTestOpen] = useState(false);
     const [testMode, setTestMode] = useState<PetMode | null>(null);
+    const [testBuild, setTestBuild] = useState<Build | null>(null);
     const [showConds, setShowConds] = useState(true);   // 시험 계정만: 성장 조건 숫자 보기
     const nameTaps = useRef<number[]>([]);
     const tapName = () => {
@@ -163,6 +167,7 @@ export function HomeScreen() {
         return () => clearInterval(id);
     }, []);
     // 기분·상태: 아픔 > 잠 > 서버 기분 (시험 패널에서 고르면 그것)
+    const build: Build = testBuild ?? pet?.build ?? 'normal';
     const mode: PetMode = testMode ?? (!pet ? 'normal' : pet.mood === 'sick' ? 'sick' : sleeping ? 'sleep' : pet.mood);
 
     useEffect(() => { void loadPet(); }, [loadPet]);
@@ -218,7 +223,7 @@ export function HomeScreen() {
                     <Pressable disabled={egg || gone} onPress={() => setNaming('rename')} style={styles.petTitle}>
                         <Text style={styles.petName}>{egg ? '🥚 알' : `${petName} ✏️`}</Text>
                         <Text style={styles.petStage}>
-                            {egg ? '무엇이 나올까요? ❓' : `${STAGE_NAME[pet.stage]} ${speciesName}`} · {ROOM_NAME[data.room.level]}
+                            {egg ? '무엇이 나올까요? ❓' : `${STAGE_NAME[pet.stage]} ${speciesName}`}{!egg && build !== 'normal' ? ` · ${BUILD_NAME[build]}` : ''} · {ROOM_NAME[data.room.level]}
                             {!egg && !gone && sleeping && pet.mood !== 'sick' ? ' · 💤' : ''}
                         </Text>
                     </Pressable>
@@ -227,7 +232,7 @@ export function HomeScreen() {
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
                         poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => { setBowlFull(false); setHeldFullness(null); }} onClean={cleanOne}
                         decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
-                        robotCleaned={pet.robot_cleaned} outfit={pet.wear} species={pet.species} variant={pet.variant}
+                        robotCleaned={pet.robot_cleaned} outfit={pet.wear} species={pet.species} variant={pet.variant} build={build}
                         placement={data.layout ?? {}} editing={editing}
                         onEditDone={async layout => {
                             if (!layout) { setEditing(false); return; }
@@ -361,6 +366,10 @@ export function HomeScreen() {
                     <View style={styles.chips}>
                         <Chip on={testMode === null} label="⚙️ 자동" onPress={() => setTestMode(null)} />
                         {TEST_MODES.map(([m, label]) => <Chip key={m} on={testMode === m} label={label} onPress={() => setTestMode(m)} />)}
+                    </View>
+                    <View style={styles.chips}>
+                        <Chip on={testBuild === null} label={`⚙️ 체형 자동 (${BUILD_NAME[pet?.build ?? 'normal']}${pet?.build_score !== undefined ? ` ${pet.build_score}점` : ''})`} onPress={() => setTestBuild(null)} />
+                        {BUILDS.map(b => <Chip key={b} on={testBuild === b} label={BUILD_NAME[b]} onPress={() => setTestBuild(b)} />)}
                     </View>
                     <View style={styles.chips}>
                         <Chip on={showConds} label="📋 성장 조건 숫자 보기" onPress={() => setShowConds(v => !v)} />

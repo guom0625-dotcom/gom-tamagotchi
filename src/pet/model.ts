@@ -81,6 +81,12 @@ const DIMS: Record<BodyStage, Dims> = {
     adult: { leg: 3.3, neck: 9.1, bw: 3.0, bd: 2.3, arm: 4.0, armW: 1.35 },
 };
 
+/** 체형 (서버가 최근 7일 먹은 양으로 정한다). 몸통 너비·두께만 바뀌고 다리·팔·옷이 따라간다 */
+export type Build = 'thin' | 'normal' | 'chubby' | 'fat';
+const BUILD_MULT: Record<Build, { w: number; d: number }> = {
+    thin: { w: 0.84, d: 0.86 }, normal: { w: 1, d: 1 }, chubby: { w: 1.15, d: 1.15 }, fat: { w: 1.3, d: 1.32 },
+};
+
 /** 옷 색 (서버 COLORS 와 같은 이름) */
 export const CLOTH_COLORS: Record<string, string> = {
     red: '#E25B5B', blue: '#4E86D8', yellow: '#F2C94C', green: '#5DBB78', pink: '#F29CC0',
@@ -153,8 +159,8 @@ const fadeLook = (L: Look): Look => {
 const models = new Map<string, PetModel>();
 
 /** 종류·변종·표정·단계·옷에 맞춘 펫 */
-export function petModel(species: Species, variant: number, expr: Expr, stage: BodyStage = 'teen', outfit: Outfit = {}): PetModel {
-    const key = `${species}:${variant}:${expr}:${stage}:${outfit.top ?? ''}:${outfit.hat ?? ''}`;
+export function petModel(species: Species, variant: number, expr: Expr, stage: BodyStage = 'teen', outfit: Outfit = {}, build: Build = 'normal'): PetModel {
+    const key = `${species}:${variant}:${expr}:${stage}:${outfit.top ?? ''}:${outfit.hat ?? ''}:${build}`;
     const hit = models.get(key);
     if (hit) return hit;
     const K = KINDS[species];
@@ -163,7 +169,8 @@ export function petModel(species: Species, variant: number, expr: Expr, stage: B
     const legK = K.body?.leg ?? 1;
     const leg = base.leg * legK;
     const neck = base.neck - (base.leg - leg);          // 다리가 짧으면 몸 전체가 내려온다
-    const bw = base.bw * (K.body?.bw ?? 1), bd = base.bd * (K.body?.bd ?? 1);
+    const BM = BUILD_MULT[build] ?? BUILD_MULT.normal;
+    const bw = base.bw * (K.body?.bw ?? 1) * BM.w, bd = base.bd * (K.body?.bd ?? 1) * BM.d;
     const arm = base.arm * (legK < 1 ? 0.8 : 1), armW = base.armW;
     const dy = neck - 7;
     const top = parseCloth(outfit.top);

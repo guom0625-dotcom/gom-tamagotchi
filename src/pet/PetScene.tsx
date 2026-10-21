@@ -4,7 +4,7 @@ import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, TouchableO
 import Svg, { G, Line, Polygon } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { C, renderPart, shade, type Part } from './voxel';
-import { petModel, type Expr, type Outfit } from './model';
+import { petModel, type Build, type Expr, type Outfit } from './model';
 import { isSpecies } from './species';
 import { PetView, makePetAnims } from './PetView';
 import { PetBrain, type PetMode } from './brain';
@@ -60,6 +60,8 @@ interface Props {
     /** 종류와 털색·무늬 번호 (서버) */
     species?: string | null;
     variant?: number | null;
+    /** 체형 (서버, 옛 서버는 안 보낸다) */
+    build?: Build | null;
     /** 부르기·쓰다듬기 버튼을 눌렀을 때 바깥에서 호출할 수 있게 */
     ctrlRef?: React.MutableRefObject<PetControl | null>;
     /** 꾸미기로 정한 물건 자리 (서버) */
@@ -90,7 +92,7 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit, species, variant, viewOnly }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit, species, variant, build, viewOnly }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
@@ -131,12 +133,14 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     const bedCover = useMemo(() => {
         if (stage === 'egg' || !isSpecies(species)) return null;
         // 이불은 펫 가슴 앞에서 시작해 턱 아래까지 (preview 로 맞춘 값)
-        const m = petModel(species, variant ?? 0, 'normal', stage, outfit);
+        const m = petModel(species, variant ?? 0, 'normal', stage, outfit, build ?? 'normal');
         let front = 0;
         for (const b of m.parts.body.boxes) front = Math.max(front, b.b[5]);
         const s = STAGE_SCALE[stage];
         return bedCoverPart((front - 0.6) * s, (m.neckY - 1.5) * s * 0.6);
-    }, [species, variant, stage, outfit?.top, outfit?.hat]);
+    }, [species, variant, stage, outfit?.top, outfit?.hat, build]);
+    const buildRef = useRef<Build>('normal');
+    buildRef.current = build ?? 'normal';
 
     // 공 위치와 굴러가는 회전
     const ball = useMemo(() => {
@@ -158,6 +162,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
         setHidden,
         bed: () => bedRef.current,
         setInBed,
+        build: () => buildRef.current,
         effectAt: (x, z, y, emoji) => setFloats(list => [...list.slice(-5), { id: ++effectId.current, at: floorPoint(l, x, z, y), emoji }]),
         moveBall: (x, z, ms) => new Promise(res => {
             const [sx, sy] = floorPoint(l, x, z);
@@ -374,7 +379,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             depth: FLOOR, el: null,
         } : {
             depth: inBed && has('bed') ? R.gadgets.bed.x + R.gadgets.bed.z - 2 + 0.3 : petDepth + 0.5, el: (
-                <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={viewOnly ? undefined : () => { void brain.call(); }}>
+                <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit, build ?? 'normal')} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}-${build ?? 'normal'}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={viewOnly ? undefined : () => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}

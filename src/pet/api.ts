@@ -1,6 +1,7 @@
 // 서버 GET /pet (그리고 모든 POST /pet/*) 응답 모양
 import type { Poop, Stage } from './PetScene';
 import type { Mood } from './brain';
+import type { Build } from './model';
 
 export type Cond = 'feed' | 'pat' | 'clean' | 'room';
 export interface GrowCond { key: Cond; have: number; need: number; missed: number }
@@ -17,6 +18,10 @@ export interface PetInfo {
     auto_fed_today: boolean;
     patted_today: boolean;
     fullness: number;            // 0~3
+    /** 체형 (알이면 null, 옛 서버는 안 보낸다). 간식을 많이 먹으면 통통·뚱뚱, 굶으면 홀쭉 */
+    build?: Build | null;
+    /** 시험 계정만: 체형 점수 (최근 7일, 4 이하 홀쭉 · 8 이하 보통 · 11 이하 통통) */
+    build_score?: number;
     poops: Poop[];
     next_change_at: number | null;
     /** 최근 하루 동안 자동 청소기가 치운 똥 (at = 치운 시각) */

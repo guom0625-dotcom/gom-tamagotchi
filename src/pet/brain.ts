@@ -3,7 +3,7 @@
 // 여기서는 겉모습만 다룬다. 기분·상태를 정하는 규칙은 서버(또는 시험용 버튼)가 준다.
 import { Animated, Easing } from 'react-native';
 import type { PetAnims } from './PetView';
-import type { Expr } from './model';
+import type { Build, Expr } from './model';
 import { yawToward, C } from './voxel';
 import { FACE_CAMERA, YAW_STEPS, yawIndex } from './layers';
 import { BED_SEAT, BED_TOP, SLIDE_TOP, toWorld, type RoomSpec, type SceneLayout, type Spot, type ToyKey } from './room';
@@ -29,6 +29,7 @@ export interface BrainEnv {
     effectAt: (x: number, z: number, y: number, emoji: string) => void;   // 방 안 아무 데나 떠오르는 그림
     bed: () => Spot | null;                          // 방에 꺼내 놓은 침대 (없으면 쿠션에서 잔다)
     setInBed: (v: boolean) => void;                  // 침대에 올라가 있다 (이불을 덮어 그린다)
+    build?: () => Build;                             // 체형 (뚱뚱하면 느리고 덜 뛰고, 홀쭉하면 기운이 없다)
 }
 
 class Cancelled extends Error {}
@@ -70,6 +71,14 @@ const MOOD: Record<Mood, {
         speed: 8, stepMs: 340, idle: [1000, 2500], headBase: 0, droop: 0,
         acts: { wander: 3, look: 1, sniff: 0, ball: 2, bowl: 0, nap: 0, happy: 0, sigh: 0, stomp: 3, toy: 1 },
     },
+};
+
+// 체형별 움직임: 속도·걸음·폴짝 높이 배수, 행동 가중치 배수
+const BUILD_MOVE: Record<Build, { speed: number; step: number; hop: number; acts: Partial<Record<Act, number>> }> = {
+    thin: { speed: 0.8, step: 1.15, hop: 0.8, acts: { ball: 0.5, toy: 0.6, happy: 0.6, bowl: 3, sniff: 1.5, nap: 1.5 } },
+    normal: { speed: 1, step: 1, hop: 1, acts: {} },
+    chubby: { speed: 0.85, step: 1.1, hop: 0.8, acts: { ball: 0.7, nap: 1.5, bowl: 1.5 } },
+    fat: { speed: 0.6, step: 1.35, hop: 0.55, acts: { ball: 0.35, toy: 0.6, wander: 0.7, nap: 2.5, bowl: 2, sniff: 1.5 } },
 };
 
 const POKE_COUNT = 5, POKE_WINDOW = 10_000, POKE_ANGRY_MS = 60_000;
@@ -134,8 +143,14 @@ export class PetBrain {
 
     private get cfg() {
         const m = this.current;
-        return MOOD[isRest(m) ? 'normal' : m];
+        const base = MOOD[isRest(m) ? 'normal' : m];
+        const b = BUILD_MOVE[this.env.build?.() ?? 'normal'] ?? BUILD_MOVE.normal;
+        if (b === BUILD_MOVE.normal) return base;
+        const acts = { ...base.acts };
+        for (const k of Object.keys(b.acts) as Act[]) acts[k] *= b.acts[k]!;
+        return { ...base, speed: base.speed * b.speed, stepMs: base.stepMs * b.step, acts };
     }
+    private get hopK() { return (BUILD_MOVE[this.env.build?.() ?? 'normal'] ?? BUILD_MOVE.normal).hop; }
 
     // 하던 일을 모두 멈춘다 (숨쉬기·눈 깜빡임은 계속)
     private interrupt() {
@@ -281,7 +296,7 @@ export class PetBrain {
     }
 
     private hop(height: number, t: number) {
-        const h = this.ground - height * C * this.env.layout.kv;
+        const h = this.ground - height * this.hopK * C * this.env.layout.kv;
         return this.play(Animated.sequence([
             Animated.timing(this.a.hop, { toValue: h, duration: 170, easing: Easing.out(Easing.quad), ...native }),
             Animated.timing(this.a.hop, { toValue: this.ground, duration: 170, easing: Easing.in(Easing.quad), ...native }),
