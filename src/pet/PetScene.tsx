@@ -68,6 +68,8 @@ interface Props {
     editing?: boolean;
     /** 꾸미기 끝: 저장할 자리, 취소면 null */
     onEditDone?: (layout: RoomLayout | null) => void;
+    /** 구경만 (숙제앱) — 똥 치우기·알 흔들기·부르기가 안 된다 */
+    viewOnly?: boolean;
 }
 
 export function PetScene(props: Props) {
@@ -86,7 +88,7 @@ export function PetScene(props: Props) {
     );
 }
 
-function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit, species, variant }: Props & { layout: SceneLayout }) {
+function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean, bowlFull = false, onAte, decor = NO_DECOR, robotCleaned, outfit, species, variant, viewOnly }: Props & { layout: SceneLayout }) {
     const R = l.room;
     const egg = stage === 'egg';
     const a = useMemo(makePetAnims, []);
@@ -330,13 +332,13 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             ),
         },
         ...poops.map(p => ({
-            depth: p.x + p.z - 3.2, el: <PoopView key={p.id} p={p} l={l} onPress={() => clean(p)} />,
+            depth: p.x + p.z - 3.2, el: <PoopView key={p.id} p={p} l={l} onPress={viewOnly ? undefined : () => clean(p)} />,
         })),
         gone ? {
             depth: FLOOR, el: <PropView key="letter" part={LETTER_PART} at={floorPoint(l, R.size / 2, R.size / 2)} kv={l.kv} />,
         } : egg ? {
             depth: R.cushion.x + R.cushion.z, el: (
-                <EggView key="egg" at={eggAt} kv={l.kv} wobble={wobble} onPress={() => shakeEgg(false)}>
+                <EggView key="egg" at={eggAt} kv={l.kv} wobble={wobble} onPress={viewOnly ? undefined : () => shakeEgg(false)}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}
@@ -346,7 +348,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             depth: FLOOR, el: null,
         } : {
             depth: petDepth + 0.5, el: (
-                <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={() => { void brain.call(); }}>
+                <PetView key="pet" model={petModel(isSpecies(species) ? species : 'bear', variant ?? 0, expr, stage as Exclude<Stage, 'egg'>, outfit)} modelKey={`${species}-${variant ?? 0}-${expr}-${stage}-${outfit?.top ?? ''}-${outfit?.hat ?? ''}`} yawIdx={yaw} kv={l.kv * STAGE_SCALE[stage as Exclude<Stage, 'egg'>]} a={a} onPress={viewOnly ? undefined : () => { void brain.call(); }}>
                     {effects.map(e => (
                         <Effect key={e.id} emoji={e.emoji} onDone={() => setEffects(list => list.filter(x => x.id !== e.id))} />
                     ))}
@@ -584,21 +586,21 @@ const PropView = React.memo(function PropView({ part, at, kv, center, yaw = 0, t
 });
 
 // 똥 한 개 — 톡 누르면 치운다
-function PoopView({ p, l, onPress }: { p: PlacedPoop; l: SceneLayout; onPress: () => void }) {
+function PoopView({ p, l, onPress }: { p: PlacedPoop; l: SceneLayout; onPress?: () => void }) {
     const at = useMemo(() => floorPoint(l, p.x, p.z), [l, p.x, p.z]);
     const size = 5 * l.kv;
     return (
         <>
             <PropView part={POOP_PART} at={at} kv={l.kv} />
-            <Pressable onPress={onPress} hitSlop={8}
-                style={{ position: 'absolute', left: at[0] - size / 2, top: at[1] - size * 0.75, width: size, height: size }} />
+            {onPress && <Pressable onPress={onPress} hitSlop={8}
+                style={{ position: 'absolute', left: at[0] - size / 2, top: at[1] - size * 0.75, width: size, height: size }} />}
         </>
     );
 }
 
 // 알 — 쿠션 위에서 흔들흔들. 바닥 가운데를 축으로 기운다
 function EggView({ at, kv, wobble, onPress, children }: {
-    at: [number, number]; kv: number; wobble: Animated.Value; onPress: () => void; children?: React.ReactNode;
+    at: [number, number]; kv: number; wobble: Animated.Value; onPress?: () => void; children?: React.ReactNode;
 }) {
     const h = 7.2 * C * kv, w = 6 * kv;
     return (
@@ -608,7 +610,7 @@ function EggView({ at, kv, wobble, onPress, children }: {
             transform: [{ rotate: wobble.interpolate({ inputRange: [-1, 1], outputRange: ['-12deg', '12deg'] }) }],
         }}>
             <PropView part={EGG_PART} at={[w / 2, h + w / 2]} kv={kv} />
-            <Pressable onPress={onPress} style={StyleSheet.absoluteFill} />
+            {onPress && <Pressable onPress={onPress} style={StyleSheet.absoluteFill} />}
             <View pointerEvents="none" style={{ position: 'absolute', left: w / 2, top: 0 }}>{children}</View>
         </Animated.View>
     );
