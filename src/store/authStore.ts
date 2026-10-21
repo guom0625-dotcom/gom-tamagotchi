@@ -68,6 +68,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     linkWithCode: async (code) => {
         set({ linkError: null });
         try {
+            // 저장된 이전 키를 같이 보내면 서버가 그 키를 끊는다 (다시 연결할 때 키가 쌓이지 않게)
+            const prev = await SecureStore.getItemAsync(STORE_KEY).catch(() => null);
+            if (prev) setApiKey(prev);
             const res = await api<{ id: string; name: string; key: string }>('/auth/link', {
                 method: 'POST',
                 body: JSON.stringify({ code }),
