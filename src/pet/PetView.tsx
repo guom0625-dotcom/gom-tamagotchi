@@ -101,7 +101,7 @@ export function PetView({ model, modelKey, yawIdx, kv, a, children, onPress }: P
             StyleSheet.absoluteFill,
             { transformOrigin: [cv.ox + r.pivot[0], cv.oy + r.pivot[1], 0], transform } as object,
         ]}>
-            <Svg width={cv.width} height={cv.height}>
+            <Svg width={cv.width} height={cv.height} viewBox={`0 0 ${cv.width} ${cv.height}`}>
                 <G transform={`translate(${cv.ox},${cv.oy})`}>
                     {r.polys.map((p, i) => <Polygon key={i} points={p.points} fill={p.fill} />)}
                 </G>
@@ -138,7 +138,7 @@ export function PetView({ model, modelKey, yawIdx, kv, a, children, onPress }: P
         }}>
             {/* 그림자 — 폴짝 뛰어도 바닥에 남는다 */}
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateY: Animated.multiply(a.hop, -1) }] }]}>
-                <Svg width={cv.width} height={cv.height}>
+                <Svg width={cv.width} height={cv.height} viewBox={`0 0 ${cv.width} ${cv.height}`}>
                     <Ellipse cx={cv.ox} cy={cv.oy} rx={model.radius * 0.9 * kv} ry={model.radius * 0.45 * kv} fill="rgba(60,40,20,0.16)" />
                 </Svg>
             </Animated.View>

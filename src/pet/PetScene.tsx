@@ -496,7 +496,7 @@ function EditRoom({ l, decor, saved, onDone }: {
         <View>
             <View style={{ width: l.width, height: l.height }}>
                 <RoomShell l={l} wallpaper={decor.wallpaper} curtain={decor.items.includes('curtain')} />
-                <Svg width={l.width} height={l.height} style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={l.width} height={l.height} viewBox={`0 0 ${l.width} ${l.height}`} style={StyleSheet.absoluteFill} pointerEvents="none">
                     {keys.filter(k => k === sel || bad.has(k)).map(k => (
                         <Polygon key={k} points={rect(k)} fill={bad.has(k) ? 'rgba(230,70,70,0.35)' : 'rgba(80,190,120,0.35)'}
                             stroke={bad.has(k) ? '#d84a4a' : '#3fa66a'} strokeWidth={1.5} />
@@ -557,7 +557,7 @@ const RoomShell = React.memo(function RoomShell({ l, wallpaper, curtain }: { l: 
         grid.push([P(i, 0, 0), P(i, 0, S)], [P(0, 0, i), P(S, 0, i)]);
     }
     return (
-        <Svg width={l.width} height={l.height} style={StyleSheet.absoluteFill}>
+        <Svg width={l.width} height={l.height} viewBox={`0 0 ${l.width} ${l.height}`} style={StyleSheet.absoluteFill}>
             <Polygon points={poly([[0, 0, 0], [S, 0, 0], [S, H, 0], [0, H, 0]])} fill={wall} />
             <Polygon points={poly([[0, 0, 0], [0, 0, S], [0, H, S], [0, H, 0]])} fill={shade(wall, 0.92)} />
             {wp && pattern.map((pts, i) => <Polygon key={`p${i}`} points={pts} fill={i % 2 ? shade(wp.pattern, 0.95) : wp.pattern} />)}
@@ -602,7 +602,7 @@ const PropView = React.memo(function PropView({ part, at, kv, center, yaw = 0, t
     }, [part, kv, yaw]);
     // 공은 가운데를 축으로 돌아야 하므로 원점 기준 상자 안에 그린다
     return (
-        <Svg width={box.w} height={box.h} pointerEvents="none"
+        <Svg width={box.w} height={box.h} viewBox={`0 0 ${box.w} ${box.h}`} pointerEvents="none"
             style={{ position: 'absolute', left: at[0] + box.x0, top: at[1] + box.y0, ...(center ? { left: box.x0, top: box.y0 } : null), ...(tint !== undefined ? { opacity: tint } : null) }}>
             <G transform={`translate(${-box.x0},${-box.y0})`}>
                 {polys.map((p, i) => <Polygon key={i} points={p.points} fill={p.fill} />)}
