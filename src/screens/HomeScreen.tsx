@@ -65,6 +65,8 @@ export function HomeScreen() {
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [bowlFull, setBowlFull] = useState(false);
+    // 밥을 차려도 다 먹기 전까지는 하트를 그대로 둔다 (서버는 차리는 순간 가득 찬 값을 준다)
+    const [heldFullness, setHeldFullness] = useState<number | null>(null);
     const [naming, setNaming] = useState<'hatch' | 'rename' | null>(null);
     const pet = data?.pet ?? null;
     const egg = pet?.stage === 'egg';
@@ -103,7 +105,10 @@ export function HomeScreen() {
         }
     }, [apply, loadPet]);
 
-    const feed = async () => { if (await act('/pet/feed')) setBowlFull(true); };
+    const feed = async () => {
+        const before = data?.pet.fullness ?? null;
+        if (await act('/pet/feed')) { setHeldFullness(before); setBowlFull(true); }
+    };
     const pat = async () => { if (await act('/pet/pat')) ctrl.current?.pat(); };
     const medicine = async () => { if (await act('/pet/medicine')) ctrl.current?.medicine(); };
     const hospital = async () => { if (await act('/pet/hospital')) ctrl.current?.hospital(); };
@@ -210,7 +215,7 @@ export function HomeScreen() {
                 )}
                 {pet && data && (
                     <PetScene ctrlRef={ctrl} mode={mode} stage={pet.stage} roomLevel={data.room.level}
-                        poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => setBowlFull(false)} onClean={cleanOne}
+                        poops={pet.poops} gone={gone} bowlFull={bowlFull} onAte={() => { setBowlFull(false); setHeldFullness(null); }} onClean={cleanOne}
                         decor={{ items: placed, wallpaper: data.decor.wallpaper, cushion: data.decor.cushion }}
                         robotCleaned={pet.robot_cleaned} outfit={pet.wear} species={pet.species} variant={pet.variant}
                         placement={data.layout ?? {}} editing={editing}
@@ -249,7 +254,7 @@ export function HomeScreen() {
                         )}
                         <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
                     </View>
-                    {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(pet.fullness)}{'🤍'.repeat(3 - pet.fullness)}</Text>}
+                    {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(heldFullness ?? pet.fullness)}{'🤍'.repeat(3 - (heldFullness ?? pet.fullness))}</Text>}
                     {msg && <Text style={styles.error}>{msg}</Text>}
 
                     {/* 아플 때 */}
