@@ -427,6 +427,14 @@ export class PetBrain {
         await this.wag(3, t);
     }
 
+    /** 반응(쓰다듬기·부르기 등)이 끝난 뒤: 그릇에 밥이 있으면 먼저 먹고, 지금 기분·상태대로 산다 */
+    private async carryOn(t: number) {
+        const m = this.current;
+        this.env.setExpr(m);
+        if (this.env.bowlFull() && m !== 'sleep' && m !== 'sick') await this.meal(t);
+        if (isRest(m)) await this.rest(m, t); else await this.live(t);
+    }
+
     /** 밥그릇에 밥을 담았다 */
     feed() {
         if (!this.started || this.disposed) return;
@@ -640,7 +648,7 @@ export class PetBrain {
             await this.outOfBed(cur, t);
             if (isRest(cur)) {
                 await this.restCall(cur, t);
-                await this.rest(cur, t);
+                await this.carryOn(t);
                 return;
             }
             await this.play(Animated.parallel([
@@ -681,7 +689,7 @@ export class PetBrain {
                 await this.wag(4, t);
                 await this.wait(2200, t);
             }
-            await this.live(t);
+            await this.carryOn(t);
         } catch (e) {
             if (!(e instanceof Cancelled)) console.warn('pet call', e);
         }
@@ -845,9 +853,7 @@ export class PetBrain {
                 this.to(this.a.eyes, 1, 120), this.to(this.a.sit, 0, 200), this.to(this.a.hop, this.ground, 100), this.to(this.a.wave, 0, 150),
             ]), t);
             await fn(t);
-            const cur = this.current;
-            this.env.setExpr(cur);
-            if (isRest(cur)) await this.rest(cur, t); else await this.live(t);
+            await this.carryOn(t);
         } catch (e) {
             if (!(e instanceof Cancelled)) console.warn('pet react', e);
         }
@@ -867,7 +873,7 @@ export class PetBrain {
                 // 자거나 아프거나 배고프면 하트만 띄우고 하던 대로
                 this.env.effect('💕');
                 await this.restCall(cur, t);
-                await this.rest(cur, t);
+                await this.carryOn(t);
                 return;
             }
             this.env.setExpr('happy');
@@ -884,7 +890,7 @@ export class PetBrain {
             await this.wag(4, t);
             await this.wait(1200, t);
             this.env.setExpr(this.current);
-            await this.live(t);
+            await this.carryOn(t);
         } catch (e) {
             if (!(e instanceof Cancelled)) console.warn('pet pat', e);
         }
