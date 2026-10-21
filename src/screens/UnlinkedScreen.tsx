@@ -1,10 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '../components/Button';
 import { colors, fontFamilies, fontSizes, radius, shadows } from '../theme';
 
 /** 아직 숙제앱과 연결되지 않음 — 가입·로그인 화면은 없고 숙제앱 버튼으로만 들어온다 */
+/** 상단바·하단 버튼에 가리지 않게 위아래를 비운다 */
+function useSafeArea() {
+    const insets = useSafeAreaInsets();
+    return { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 };
+}
+
 export function UnlinkedScreen() {
     const linkError = useAuthStore(s => s.linkError);
     const linkWithCode = useAuthStore(s => s.linkWithCode);
@@ -28,7 +35,7 @@ export function UnlinkedScreen() {
     };
 
     return (
-        <View style={styles.wrap}>
+        <View style={[styles.wrap, useSafeArea()]}>
             <Pressable onPress={tapEgg} hitSlop={12}>
                 <Text style={styles.egg}>🥚</Text>
             </Pressable>
@@ -68,7 +75,7 @@ export function OfflineScreen() {
         setBusy(false);
     };
     return (
-        <View style={styles.wrap}>
+        <View style={[styles.wrap, useSafeArea()]}>
             <Text style={styles.egg}>📡</Text>
             <Text style={styles.body}>서버에 연결할 수 없어요{'\n'}인터넷을 확인해 주세요</Text>
             {busy
@@ -80,7 +87,7 @@ export function OfflineScreen() {
 
 export function LoadingScreen() {
     return (
-        <View style={styles.wrap}>
+        <View style={[styles.wrap, useSafeArea()]}>
             <ActivityIndicator size="large" color={colors.sun[700]} />
         </View>
     );

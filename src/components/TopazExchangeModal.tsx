@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Ale
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Gem } from './Gem';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 // 서버와 같은 비율: 다이아 1 = 토파즈 10 (토파즈 → 다이아는 안 됨)
@@ -19,6 +20,7 @@ export function TopazExchangeModal({ visible, onClose }: Props) {
     const setGems = useAuthStore(s => s.setGems);
     const [count, setCount] = useState(1);
     const [busy, setBusy] = useState(false);
+    const insets = useSafeAreaInsets();
 
     useEffect(() => { if (visible) setCount(1); }, [visible]);
 
@@ -43,9 +45,9 @@ export function TopazExchangeModal({ visible, onClose }: Props) {
     };
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={styles.overlay}>
-                <View style={styles.card}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+            <View style={[styles.overlay, { paddingTop: insets.top + 12 }]}>
+                <View style={[styles.card, { paddingBottom: insets.bottom + 20 }]}>
                     <Text style={styles.title}>토파즈로 바꾸기</Text>
                     <Text style={styles.note}>
                         다이아 1개 = 토파즈 {TOPAZ_PER_DIAMOND}개{'\n'}토파즈는 다시 다이아로 바꿀 수 없어요
@@ -92,13 +94,13 @@ export function TopazExchangeModal({ visible, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
     card: {
+        width: '100%', maxWidth: 480,
         backgroundColor: colors.paper,
         borderTopLeftRadius: radius.xl,
         borderTopRightRadius: radius.xl,
         padding: 20,
-        paddingBottom: 32,
         gap: 10,
     },
     title: {

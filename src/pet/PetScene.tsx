@@ -229,7 +229,6 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     const robotBusy = useRef(false);
     const robotAlive = useRef(true);
     useEffect(() => () => { robotAlive.current = false; robot.x.stopAnimation(); robot.y.stopAnimation(); }, [robot]);
-    const prevPoopIds = useRef(new Set(rawPoops.map(p => p.id)));
 
     const drive = (x: number, z: number) => new Promise<void>(res => {
         const dist = Math.hypot(x - robot.pos.x, z - robot.pos.z);
@@ -266,22 +265,20 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     useEffect(() => {
         if (!hasRobot) return;
         let cancelled = false;
-        const prev = prevPoopIds.current;   // 바로 전까지 보이던 똥 (아래 효과가 곧 새 목록으로 바꾼다)
         (async () => {
             const seen = Number(await SecureStore.getItemAsync(ROBOT_SEEN_KEY).catch(() => null) ?? 0) || 0;
             if (cancelled) return;
             const fresh = (robotCleaned ?? []).filter(r => r.at > seen && !robotQueue.current.some(q => q.id === r.id));
             if (!fresh.length) return;
             const spots = fresh.map(r => ({ id: r.id, ...poopSpot(R, r.u, r.v) }));
-            // 방금까지 보이던 똥이면 청소기가 갈 때까지 남겨 둔다
-            setGhosts(list => [...list, ...spots.filter(s => prev.has(s.id) && !list.some(g => g.id === s.id))]);
+            // 청소기가 갈 때까지 그 똥을 그려 둔다 (앱을 안 보는 사이 나왔다 치워진 똥도 — 빈자리로 가지 않게)
+            setGhosts(list => [...list, ...spots.filter(s => !list.some(g => g.id === s.id))]);
             robotQueue.current.push(...spots);
             await SecureStore.setItemAsync(ROBOT_SEEN_KEY, String(Math.max(...fresh.map(r => r.at)))).catch(() => {});
             void runRobot();
         })();
         return () => { cancelled = true; };
     }, [robotCleaned, hasRobot]);
-    useEffect(() => { prevPoopIds.current = new Set(rawPoops.map(p => p.id)); }, [rawPoops]);
 
     // 한가할 때 가끔 방을 한 바퀴
     useEffect(() => {

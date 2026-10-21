@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 interface Props {
@@ -20,11 +21,12 @@ export function NameModal({ visible, title, note, initial = '', confirmLabel, bu
     const [name, setName] = useState(initial);
     useEffect(() => { if (visible) setName(initial); }, [visible, initial]);
     const trimmed = name.trim();
+    const insets = useSafeAreaInsets();
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={styles.overlay}>
-                <View style={styles.card}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+            <View style={[styles.overlay, { paddingTop: insets.top + 12 }]}>
+                <View style={[styles.card, { paddingBottom: insets.bottom + 20 }]}>
                     <Text style={styles.title}>{title}</Text>
                     {note && <Text style={styles.note}>{note}</Text>}
                     <TextInput
@@ -52,13 +54,13 @@ export function NameModal({ visible, title, note, initial = '', confirmLabel, bu
 }
 
 const styles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
     card: {
+        width: '100%', maxWidth: 480,
         backgroundColor: colors.paper,
         borderTopLeftRadius: radius.xl,
         borderTopRightRadius: radius.xl,
         padding: 20,
-        paddingBottom: 32,
         gap: 10,
     },
     title: { fontFamily: fontFamilies.display, fontSize: fontSizes['2xl'], color: colors.ink[900], textAlign: 'center' },

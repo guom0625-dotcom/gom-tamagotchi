@@ -161,8 +161,8 @@ export function ShopModal({ visible, data, busy, act, onSnack, onClose }: Props)
     }
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={styles.overlay}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+            <View style={[styles.overlay, { paddingTop: insets.top + 12 }]}>
                 <View style={[styles.card, { paddingBottom: insets.bottom + 16 }]}>
                     <View style={styles.head}>
                         <Text style={styles.title}>🛒 상점</Text>
@@ -175,7 +175,7 @@ export function ShopModal({ visible, data, busy, act, onSnack, onClose }: Props)
                             </Pressable>
                         ))}
                     </ScrollView>
-                    <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8 }}>{body}</ScrollView>
+                    <ScrollView style={{ maxHeight: 420, flexShrink: 1 }} contentContainerStyle={{ gap: 8 }}>{body}</ScrollView>
                     <TouchableOpacity style={styles.close} onPress={onClose}>
                         <Text style={styles.closeText}>닫기</Text>
                     </TouchableOpacity>
@@ -188,7 +188,7 @@ export function ShopModal({ visible, data, busy, act, onSnack, onClose }: Props)
 const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
     card: {
-        width: '100%', maxWidth: 480,
+        width: '100%', maxWidth: 480, flexShrink: 1,
         backgroundColor: colors.paper,
         borderTopLeftRadius: radius.xl,
         borderTopRightRadius: radius.xl,

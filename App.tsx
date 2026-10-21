@@ -11,7 +11,7 @@ import {
   Fredoka_500Medium,
 } from '@expo-google-fonts/fredoka';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useServerUrl } from './src/hooks/useServerUrl';
 import { useDeepLink } from './src/hooks/useDeepLink';
@@ -24,10 +24,11 @@ import { colors, fontFamilies, fontSizes } from './src/theme';
 
 // 새 버전이 있으면 앱을 가리고 업데이트를 끝낼 때까지 진행 상황을 보여준다
 function UpdateOverlay({ state, retry, skip }: ReturnType<typeof useUpdateCheck>) {
+  const insets = useSafeAreaInsets();
   if (state.phase === 'idle') return null;
 
   return (
-    <View style={styles.overlay}>
+    <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Text style={styles.overlayTitle}>새 버전 {state.version}</Text>
 
       {state.phase === 'downloading' && (
