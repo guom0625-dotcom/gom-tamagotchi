@@ -92,16 +92,29 @@ function defaultSpec(size: number): RoomSpec {
     };
 }
 
-/** 서버의 똥 자리(u, v: 0~1)를 방 바닥 위로 펼친다. 쿠션·밥그릇 위면 반대쪽으로 옮긴다 */
-export function poopSpot(r: RoomSpec, u: number, v: number): { x: number; z: number } {
+/** 서버의 똥 자리(u, v: 0~1)를 방 바닥 위로 펼친다.
+ *  쿠션·밥그릇 근처나 꺼내 둔 물건 밑이면 비어 있는 가장 가까운 곳으로 옮긴다 (러그 위는 괜찮다) */
+export function poopSpot(r: RoomSpec, u: number, v: number, items: readonly string[] = []): { x: number; z: number } {
     const at = (u: number, v: number) => ({ x: r.walkMin + u * (r.walkMax - r.walkMin), z: r.walkMin + v * (r.walkMax - r.walkMin) });
+    const m = 1.2;   // 물건 가장자리에서 띄우는 거리 (똥 반지름 정도)
+    const rects = MOVABLE_KEYS
+        .filter(k => k !== 'cushion' && k !== 'bowl' && !FLAT_KEYS.has(k) && items.includes(k))
+        .map(k => footprint(k, spotRef(r, k)!));
     const clear = (p: { x: number; z: number }) =>
-        [r.cushion, r.bowl].every(o => Math.hypot(p.x - o.x, p.z - o.z) > o.r + 2.5);
-    for (const [a, b] of [[u, v], [1 - u, v], [u, 1 - v], [1 - u, 1 - v], [0.5, 0.5]]) {
+        [r.cushion, r.bowl].every(o => Math.hypot(p.x - o.x, p.z - o.z) > o.r + 2.5)
+        && rects.every(q => p.x < q.x0 - m || p.x > q.x1 + m || p.z < q.z0 - m || p.z > q.z1 + m);
+    for (const [a, b] of [[u, v], [1 - u, v], [u, 1 - v], [1 - u, 1 - v]]) {
         const p = at(a, b);
         if (clear(p)) return p;
     }
-    return at(0.5, 0.5);
+    // 다 막혔으면 원래 자리에서 가장 가까운 빈 곳 (한 칸 간격으로 찾는다)
+    const want = at(u, v);
+    let best: { x: number; z: number } | null = null, bd = Infinity;
+    for (let x = r.walkMin; x <= r.walkMax; x++) for (let z = r.walkMin; z <= r.walkMax; z++) {
+        const d = Math.hypot(x - want.x, z - want.z);
+        if (d < bd && clear({ x, z })) { bd = d; best = { x, z }; }
+    }
+    return best ?? at(0.5, 0.5);
 }
 
 export interface SceneLayout {

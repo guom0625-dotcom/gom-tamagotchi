@@ -99,9 +99,9 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
     // 청소기가 치우러 가는 동안에는 서버에서 없어진 똥도 그 자리에 남겨 둔다
     const [ghosts, setGhosts] = useState<PlacedPoop[]>([]);
     const poops = useMemo<PlacedPoop[]>(() => [
-        ...rawPoops.map(p => ({ id: p.id, ...poopSpot(R, p.u, p.v) })),
+        ...rawPoops.map(p => ({ id: p.id, ...poopSpot(R, p.u, p.v, decor.items) })),
         ...ghosts.filter(g => !rawPoops.some(p => p.id === g.id)),
-    ], [rawPoops, ghosts, R]);
+    ], [rawPoops, ghosts, R, decor.items.join(',')]);
     const [yaw, setYaw] = useState(0);
     const [expr, setExpr] = useState<Expr>('normal');
     const poopsRef = useRef(poops);
@@ -275,7 +275,7 @@ function Room({ layout: l, ctrlRef, mode, stage, poops: rawPoops, gone, onClean,
             if (cancelled) return;
             const fresh = (robotCleaned ?? []).filter(r => r.at > seen && !robotQueue.current.some(q => q.id === r.id));
             if (!fresh.length) return;
-            const spots = fresh.map(r => ({ id: r.id, ...poopSpot(R, r.u, r.v) }));
+            const spots = fresh.map(r => ({ id: r.id, ...poopSpot(R, r.u, r.v, decor.items) }));
             // 청소기가 갈 때까지 그 똥을 그려 둔다 (앱을 안 보는 사이 나왔다 치워진 똥도 — 빈자리로 가지 않게)
             setGhosts(list => [...list, ...spots.filter(s => !list.some(g => g.id === s.id))]);
             robotQueue.current.push(...spots);
