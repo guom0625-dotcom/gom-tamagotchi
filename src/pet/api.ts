@@ -46,7 +46,15 @@ export interface PetInfo {
 }
 
 /** 도감에 남은 졸업한 펫 */
-export interface DexPet { species: string; variant: number; name: string | null; at: number }
+export interface DexPet { id?: string; species: string; variant: number; name: string | null; at: number }
+
+/** 미니게임 똥피하기 — GET /pet/game, POST /pet/game/start·end */
+export interface GameBoardRow { student: string; score_ms: number; species: string; variant: number; stage: string; pet: string | null; me: boolean }
+export interface GameInfo {
+    plays_left: number; plays_per_day: number;
+    best: number | null; rank: number | null; players: number;
+    top: GameBoardRow[];
+}
 
 export interface PetResponse {
     pet: PetInfo;

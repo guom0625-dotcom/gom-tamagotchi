@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PetView, makePetAnims, petCanvas } from '../pet/PetView';
-import { petModel } from '../pet/model';
+import { petModel, type BodyStage } from '../pet/model';
 import { FACE_CAMERA } from '../pet/layers';
 import { KINDS, SPECIES, SPECIES_NAME, lookTitle, type Species } from '../pet/species';
 import type { DexPet } from '../pet/api';
@@ -10,17 +10,17 @@ import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 const THUMB = 76;
 
-/** 졸업한 펫 그림 한 장 (움직이지 않는다, 어른 모습으로 정면) */
-function PetThumb({ species, variant }: { species: Species; variant: number }) {
-    const model = useMemo(() => petModel(species, variant, 'happy', 'adult'), [species, variant]);
+/** 펫 그림 한 장 (움직이지 않는다, 정면). 도감은 어른 모습 */
+export function PetThumb({ species, variant, stage = 'adult', size = THUMB }: { species: Species; variant: number; stage?: BodyStage; size?: number }) {
+    const model = useMemo(() => petModel(species, variant, 'happy', stage), [species, variant, stage]);
     const a = useMemo(makePetAnims, []);
     const one = petCanvas(model, 1);
-    const kv = THUMB / Math.max(one.width, one.height);
+    const kv = size / Math.max(one.width, one.height);
     const cv = petCanvas(model, kv);
     return (
-        <View style={{ width: THUMB, height: THUMB }}>
-            <View style={{ position: 'absolute', left: (THUMB - cv.width) / 2 + cv.ox, top: (THUMB - cv.height) / 2 + cv.oy }}>
-                <PetView model={model} modelKey={`dex-${species}-${variant}`} yawIdx={FACE_CAMERA} kv={kv} a={a} />
+        <View style={{ width: size, height: size }}>
+            <View style={{ position: 'absolute', left: (size - cv.width) / 2 + cv.ox, top: (size - cv.height) / 2 + cv.oy }}>
+                <PetView model={model} modelKey={`thumb-${species}-${variant}-${stage}`} yawIdx={FACE_CAMERA} kv={kv} a={a} />
             </View>
         </View>
     );

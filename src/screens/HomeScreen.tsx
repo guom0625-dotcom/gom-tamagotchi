@@ -10,6 +10,7 @@ import { NameModal } from '../components/NameModal';
 import { isSpecies, lookTitle } from '../pet/species';
 import { ShopModal } from '../components/ShopModal';
 import { DexModal } from '../components/DexModal';
+import { GameModal } from '../components/GameModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
 import type { Build } from '../pet/model';
@@ -62,6 +63,7 @@ export function HomeScreen() {
     const [exchangeOpen, setExchangeOpen] = useState(false);
     const [shopOpen, setShopOpen] = useState(false);
     const [dexOpen, setDexOpen] = useState(false);
+    const [gameOpen, setGameOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const scrollRef = useRef<ScrollView>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -268,6 +270,7 @@ export function HomeScreen() {
                             </>
                         )}
                         <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
+                        {data.dex && <Button variant="ghost" size="sm" label="💩 똥피하기" onPress={() => setGameOpen(true)} />}
                         {data.dex && <Button variant="ghost" size="sm" label={`📖 도감 ${data.dex.pets.length > 0 ? new Set(data.dex.pets.map(d => `${d.species}:${d.variant}`)).size : 0}/${data.dex.total}`} onPress={() => setDexOpen(true)} />}
                     </View>
                     {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(heldFullness ?? pet.fullness)}{'🤍'.repeat(3 - (heldFullness ?? pet.fullness))}</Text>}
@@ -396,6 +399,15 @@ export function HomeScreen() {
                 <ShopModal visible={shopOpen} data={data} busy={busy} act={act}
                     onSnack={emoji => setTimeout(() => ctrl.current?.snack(emoji), 300)} onClose={() => setShopOpen(false)} />
             )}
+            {data?.dex && pet && (
+                <GameModal visible={gameOpen} onClose={() => setGameOpen(false)} dex={data.dex.pets} onPlayed={() => void loadPet()}
+                    current={!egg && !gone && isSpecies(pet.species) ? {
+                        id: pet.id, species: pet.species, variant: pet.variant, stage: pet.stage as Exclude<Stage, 'egg'>,
+                        build: pet.build ?? 'normal', outfit: pet.wear, name: petName,
+                    } : null}
+                    currentBlock={pet.mood === 'sick' ? '아플 때는 게임을 못 해요' : pet.mood === 'hungry' ? '배가 고파서 못 해요. 밥을 먼저 주세요'
+                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 해요 (도감 친구는 할 수 있어요)' : null} />
+            )}
             {data?.dex && <DexModal visible={dexOpen} pets={data.dex.pets} total={data.dex.total} onClose={() => setDexOpen(false)} />}
             <NameModal
                 visible={naming !== null}
@@ -520,6 +532,7 @@ const TEST_MODES: [PetMode, string][] = [
 
 // 서버 /pet/test 의 action
 const TEST_ACTIONS: [string, string][] = [
+    ['game_reset', '🎮 게임 판수 되돌리기'],
     ['next_day', '⏩ 하루 지나기'], ['hours_8', '⏩ 8시간 지나기'], ['fill', '✅ 성장 조건 채우기'],
     ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
     ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],
