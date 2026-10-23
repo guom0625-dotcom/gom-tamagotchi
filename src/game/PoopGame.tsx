@@ -14,7 +14,10 @@ import { abilityOf } from './abilities';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 const POOL = 70;
-const STAGE_KV: Record<BodyStage, number> = { baby: 0.72, teen: 0.86, adult: 1 };
+// 자라면 그림이 커지는데, 크면 잘 맞아서 불리했다 (2026-10-23 사용자 지적).
+// 그래서 단계와 상관없이 보통 체형 기준 같은 너비로 그리고, 맞는 범위는 자랄수록 조금씩 작게 한다
+const PET_W = 6.2;                                         // 보통 체형 펫 반지름을 이 칸 수로 맞춘다
+const STAGE_HIT: Record<BodyStage, number> = { baby: 1, teen: 0.94, adult: 0.88 };
 const RIGHT = yawIndex(yawToward(1, 0));   // 화면 오른쪽(조금 앞)을 본다
 const LEFT = yawIndex(yawToward(0, 1));
 
@@ -67,7 +70,7 @@ function Field({ char, onOver, w, h }: Props & { w: number; h: number }) {
     const fieldH = h - barH;
     const ground = fieldH - 26;            // 펫 발밑
     const kvBase = w / 64;
-    const kv = kvBase * STAGE_KV[char.stage];
+    const kv = kvBase * PET_W / petModel(char.species, char.variant, 'happy', char.stage).radius;   // 살찐 만큼은 넓어진다
     const kvPoop = kvBase * 1.05;
     const poopR = 1.7 * kvPoop;            // 똥 반지름 (px)
     const poopH = 2.8 * C * kvPoop;        // 똥 높이 (px)
@@ -77,7 +80,7 @@ function Field({ char, onOver, w, h }: Props & { w: number; h: number }) {
     const model = useMemo(() => petModel(char.species, char.variant, expr, char.stage, char.outfit ?? {}, char.build),
         [char, expr]);
     const modelKey = `game-${char.species}-${char.variant}-${expr}-${char.stage}-${char.outfit?.top ?? ''}-${char.outfit?.hat ?? ''}-${char.build}`;
-    const petHalf = model.radius * kv * 0.62 * ab.hit;
+    const petHalf = model.radius * kv * 0.62 * ab.hit * STAGE_HIT[char.stage];
     const petTop = model.height * C * kv * 0.85;
 
     const a = useMemo(makePetAnims, []);

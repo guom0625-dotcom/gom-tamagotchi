@@ -17,6 +17,7 @@ const EMOJI: Record<Species, string> = { bear: '🐻', dog: '🐶', cat: '🐱',
 const STAGE_NAME: Record<string, string> = { baby: '유아', teen: '청소년', adult: '성인' };
 const ERRORS: Record<string, string> = {
     no_plays_left: '오늘은 다 했어요. 내일 또 해요',
+    insufficient_gems: '토파즈가 모자라요',
     sick: '아플 때는 게임을 못 해요',
     hungry: '배가 고파서 못 해요. 밥을 먼저 주세요',
     egg: '알은 게임을 못 해요',
@@ -86,6 +87,7 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
             const r = await api<GameInfo & { game: { id: string } }>('/pet/game/start', { method: 'POST', body: JSON.stringify({ pet_id: picked.id }) });
             setInfo(r);
             setResult(null);
+            if (r.plays_left <= 0 && r.price) onPlayed();   // 토파즈를 냈으면 잔고를 다시 읽는다
             setGame(g => ({ id: r.game.id, char: picked, n: (g?.n ?? 0) + 1 }));
             setPhase('play');
         } catch (e) {
@@ -115,7 +117,7 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
                 <View style={styles.inner}>
                     <View style={styles.header}>
                         <Text style={styles.title}>💩 똥피하기</Text>
-                        {info && <Text style={styles.plays}>오늘 {info.plays_left}/{info.plays_per_day}판 남음</Text>}
+                        {info && <Text style={styles.plays}>{info.plays_left > 0 ? `오늘 무료 ${info.plays_left}/${info.plays_per_day}판` : info.price ? `무료 판 끝 · 한 판 🔶${info.price}` : '오늘은 다 했어요'}</Text>}
                     </View>
 
                     {phase === 'play' && game ? (
@@ -155,8 +157,9 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
                                 </View>
                             )}
                             {msg && <Text style={styles.warn}>{msg}</Text>}
-                            <Button variant="coral" disabled={busy || !picked || !info || info.plays_left <= 0 || (picked.current && !!currentBlock)}
-                                label={info && info.plays_left <= 0 ? '오늘은 다 했어요' : phase === 'over' ? '🔁 한 판 더' : '▶ 시작'}
+                            <Button variant="coral" disabled={busy || !picked || !info || (picked.current && !!currentBlock)
+                                    || (info.plays_left <= 0 && (!info.price || (info.topaz ?? 0) < info.price))}
+                                label={`${phase === 'over' ? '🔁 한 판 더' : '▶ 시작'}${info && info.plays_left <= 0 ? (info.price ? ` 🔶${info.price}` : ' (내일 또)') : ''}`}
                                 onPress={start} style={{ alignSelf: 'center' }} />
 
                             <Text style={styles.section}>🏆 순위</Text>

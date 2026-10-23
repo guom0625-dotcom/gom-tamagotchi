@@ -51,7 +51,10 @@ export interface DexPet { id?: string; species: string; variant: number; name: s
 /** 미니게임 똥피하기 — GET /pet/game, POST /pet/game/start·end */
 export interface GameBoardRow { student: string; score_ms: number; species: string; variant: number; stage: string; pet: string | null; me: boolean }
 export interface GameInfo {
+    /** 오늘 남은 무료 판 */
     plays_left: number; plays_per_day: number;
+    /** 무료 판을 다 쓴 뒤 한 판 값 (옛 서버는 안 보낸다) */
+    price?: number; topaz?: number;
     best: number | null; rank: number | null; players: number;
     top: GameBoardRow[];
 }

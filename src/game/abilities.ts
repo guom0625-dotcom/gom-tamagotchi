@@ -51,7 +51,7 @@ export function abilityOf(species: Species, stage: BodyStage, build: Build = 'no
 }
 
 export const STAGE_NOTE: Record<BodyStage, string> = {
-    baby: '유아: 작지만 느리고 능력이 약해요',
-    teen: '청소년: 보통이에요',
-    adult: '성인: 빠르고 능력이 가장 세요',
+    baby: '유아: 느리고 능력이 약해요',
+    teen: '청소년: 조금 빠르고 잘 안 맞아요',
+    adult: '성인: 가장 빠르고 잘 안 맞고 능력이 가장 세요',
 };
