@@ -1,7 +1,8 @@
-// 🐧 얼음길 달리기 (3D) — 슈퍼펭귄처럼: 폰을 기울여 좌우로 움직이고, 화면을 톡 누르면 점프한다 (2026-10-26 사용자 결정).
+// 🌲 숲길 달리기 (3D) — 슈퍼펭귄처럼: 폰을 기울여 좌우로 움직이고, 화면을 톡 누르면 점프한다 (2026-10-26 사용자 결정).
 // three.js + expo-gl. 펫은 방에서 쓰는 복셀 모델을 그대로 3D 상자로 옮긴다(game3d/petMesh).
-// 길은 굽고 오르내리며, 얼음·눈사람은 피하거나 뛰어넘고, 물웅덩이·크레바스는 뛰어넘고, 점프대는 높이 날려 준다.
-// 슈퍼펭귄처럼 얼음에 갇힌 친구(도감 친구)를 구하면 파워업: 🚀 로켓 · 🧲 자석 · 🦖 거대화 · 🛡️ 방패 (2026-10-26 사용자 결정).
+// 숲길은 굽고 오르내리며, 바위·그루터기는 피하거나 뛰어넘고, 웅덩이·시냇물은 뛰어넘고, 점프대는 높이 날려 준다.
+// (2026-10-26 사용자 결정: 빙판 대신 숲길. 물고기 대신 🍎 사과)
+// 슈퍼펭귄처럼 우리에 갇힌 친구(도감 친구)를 구하면 파워업: 🚀 로켓 · 🧲 자석 · 🦖 거대화 · 🛡️ 방패 (2026-10-26 사용자 결정).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
@@ -14,14 +15,14 @@ import { runAbilityOf } from './abilities';
 import type { GameChar } from './PoopGame';
 import { buildPet, poseFall, poseIdle, poseRun } from '../game3d/petMesh';
 import { HW, headingAt, slopeAt, worldAt } from '../game3d/track';
-import { GAP_LEN, OBJ_HALF, SKY, World, type Obj, type ObjKind } from '../game3d/world';
+import { CREEK_LEN, OBJ_HALF, SKY, World, type Obj, type ObjKind } from '../game3d/world';
 import { fontFamilies, fontSizes } from '../theme';
 
 export interface RunResult { ms: number; score: number; dist: number; fish: number }
 
 interface Props {
     char: GameChar;
-    /** 얼음에 갇혀 나올 친구들 (도감). 없으면 아무 동물 */
+    /** 우리에 갇혀 나올 친구들 (도감). 없으면 아무 동물 */
     friends?: { species: Species; variant: number }[];
     onOver: (r: RunResult) => void;
 }
@@ -33,7 +34,7 @@ const POWER_NAME: Record<Power, string> = { rocket: '🚀 로켓', magnet: '🧲
 const FISH_POINTS = 10;
 const PET_H = 1.6;              // 펫 키 (m) — 단계와 상관없이 같게 (크면 잘 부딪혀서 불리했다)
 const COUNT_S = 2.4;            // 3·2·1
-const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;
+const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;   // 사과 높이 (보통 / 점프대 위)
 
 interface Hud { dist: number; fish: number; shields: number; count: number; flash: string | null; dead: boolean; power: string | null }
 
@@ -108,7 +109,7 @@ export function RunGame({ char, friends, onOver }: Props) {
         const bubbleM = new THREE.MeshLambertMaterial({ color: '#7FD8FF', transparent: true, opacity: 0.28, depthWrite: false, emissive: new THREE.Color('#1A4A66') });
         const bubble = new THREE.Mesh(bubbleG, bubbleM);
         bubble.position.y = 0.85; bubble.visible = false; bubble.renderOrder = 3; rig.root.add(bubble);
-        // 얼음에 갇힌 친구 그림 (모습마다 한 번만 만든다)
+        // 우리에 갇힌 친구 그림 (모습마다 한 번만 만든다)
         const friendRigs = new Map<string, ReturnType<typeof buildPet>>();
         const pickFriend = () => {
             const pool = friends?.length ? friends : SPECIES.map(sp => ({ species: sp, variant: Math.floor(Math.random() * KINDS[sp].looks.length) }));
@@ -134,9 +135,9 @@ export function RunGame({ char, friends, onOver }: Props) {
             const mesh = world.take(kind);
             if (!mesh) return;
             const [x, y, z] = worldAt(s, u);
-            mesh.position.set(x, y + (kind === 'fish' ? raised : 0), z);
-            // 납작한 것(웅덩이·크레바스·점프대)은 길 기울기를 따라 눕힌다 (안 그러면 내리막에서 반쯤 묻힌다)
-            const flat = kind === 'hole' || kind === 'gap' || kind === 'ramp';
+            mesh.position.set(x, y + (kind === 'fruit' ? raised : 0), z);
+            // 납작한 것(웅덩이·시냇물·점프대)은 길 기울기를 따라 눕힌다 (안 그러면 내리막에서 반쯤 묻힌다)
+            const flat = kind === 'puddle' || kind === 'creek' || kind === 'ramp';
             mesh.rotation.order = 'YXZ';
             mesh.rotation.set(flat ? Math.atan(slopeAt(s).dy) : 0, headingAt(s), 0);
             mesh.userData.raised = raised;
@@ -158,23 +159,23 @@ export function RunGame({ char, friends, onOver }: Props) {
         const pattern = (s: number) => {
             const r = Math.random();
             if (ab.seed && st.t >= st.nextSeed) { spawn('seed', s, lane()); st.nextSeed = st.t + ab.seed.every; return; }
-            // 얼음에 갇힌 친구: 200~350m 마다
+            // 우리에 갇힌 친구: 200~350m 마다
             if (s >= st.nextFriend) { spawn('friend', s, lane() * 0.8); st.nextFriend = s + 200 + Math.random() * 150; return; }
-            // 크레바스: 길 전체가 끊겨서 꼭 뛰어넘어야 한다 (앞뒤로는 비워 둔다)
-            if (st.t > 14 && r < 0.12) { spawn('gap', s, 0); st.nextAt += 10; return; }
-            if (r < 0.22) { const u = lane(); for (let i = 0; i < 5; i++) spawn('fish', s + i * 2.5, u); }
-            else if (r < 0.32 && st.t > 8) {     // 점프대 + 하늘에 물고기 (점프대로 날아야 먹는다)
+            // 시냇물: 길 전체를 가로질러서 꼭 뛰어넘어야 한다 (앞뒤로는 비워 둔다)
+            if (st.t > 14 && r < 0.12) { spawn('creek', s, 0); st.nextAt += 10; return; }
+            if (r < 0.22) { const u = lane(); for (let i = 0; i < 5; i++) spawn('fruit', s + i * 2.5, u); }
+            else if (r < 0.32 && st.t > 8) {     // 점프대 + 하늘에 사과 (점프대로 날아야 먹는다)
                 const u = lane() * 0.6; spawn('ramp', s, u);
-                for (let i = 1; i <= 4; i++) spawn('fish', s + 2 + i * 3.4, u, FISH_HIGH_Y);
+                for (let i = 1; i <= 4; i++) spawn('fruit', s + 2 + i * 3.4, u, FISH_HIGH_Y);
             }
-            else if (r < 0.5) spawn('hole', s, lane());
+            else if (r < 0.5) spawn('puddle', s, lane());
             else if (r < 0.66 && st.t > 10) {    // 둘 사이로 빠져나가거나 뛰어넘기
                 const gap = (Math.random() * 2 - 1) * 0.45;
-                spawn(Math.random() < 0.5 ? 'ice' : 'snowman', s, gap - 0.62);
-                spawn(Math.random() < 0.5 ? 'ice' : 'snowman', s, gap + 0.62);
+                spawn(Math.random() < 0.5 ? 'rock' : 'stump', s, gap - 0.62);
+                spawn(Math.random() < 0.5 ? 'rock' : 'stump', s, gap + 0.62);
             } else {
-                spawn(Math.random() < 0.55 ? 'ice' : 'snowman', s, lane());
-                if (Math.random() < 0.5) spawn('fish', s + 7, lane());
+                spawn(Math.random() < 0.55 ? 'rock' : 'stump', s, lane());
+                if (Math.random() < 0.5) spawn('fruit', s + 7, lane());
             }
         };
 
@@ -263,55 +264,55 @@ export function RunGame({ char, friends, onOver }: Props) {
                 const R = petR * st.giantK;
                 for (let i = st.objs.length - 1; i >= 0; i--) {
                     const o = st.objs[i];
-                    const half = o.kind === 'gap' ? GAP_LEN / 2 : 0.5;
+                    const half = o.kind === 'creek' ? CREEK_LEN / 2 : 0.5;
                     if (!o.done && o.s > prevS - half && o.s <= st.s + half) {
-                        const dx = o.kind === 'gap' ? 0 : Math.abs(o.u - st.u) * HW;
-                        if (o.kind === 'fish' || o.kind === 'seed') {
-                            const reach = magnet ? HW * 2 : R + OBJ_HALF[o.kind] * (o.kind === 'fish' ? ab.magnet : 1);
+                        const dx = o.kind === 'creek' ? 0 : Math.abs(o.u - st.u) * HW;
+                        if (o.kind === 'fruit' || o.kind === 'seed') {
+                            const reach = magnet ? HW * 2 : R + OBJ_HALF[o.kind] * (o.kind === 'fruit' ? ab.magnet : 1);
                             const high = (o.mesh.userData.raised as number) > 2;
                             if (dx < reach && (!high || st.y > 1.8 || magnet)) {
                                 o.done = true; world.give(o.mesh);
-                                if (o.kind === 'fish') st.fish++;
+                                if (o.kind === 'fruit') st.fish++;
                                 else { st.invUntil = st.t + ab.seed!.dur; say('🌻 냠! 무적'); }
                             }
                         } else if (o.kind === 'friend') {
                             if (dx < R + OBJ_HALF.friend) {
-                                // 얼음을 깨고 친구를 구하면 파워업 하나
+                                // 우리를 부수고 친구를 구하면 파워업 하나
                                 o.done = true; world.give(o.mesh);
                                 const list: Power[] = ['rocket', 'magnet', 'giant', 'shield'];
                                 const pw = list[Math.floor(Math.random() * list.length)];
                                 const f = o.mesh.userData.friend as { species: Species };
                                 if (pw === 'shield') st.shields++;
                                 else { st.power = pw; st.powerUntil = st.t + POWER_S[pw]; }
-                                say(`🧊 ${SPECIES_NAME[f.species]} 구출! ${POWER_NAME[pw]}`);
+                                say(`🔓 ${SPECIES_NAME[f.species]} 구출! ${POWER_NAME[pw]}`);
                             }
                         } else if (o.kind === 'ramp') {
                             if (dx < OBJ_HALF.ramp && st.y < 0.6) {
                                 o.done = true; st.jumpT = 0; st.jumpBoost = 1.55; say('🚀 슝!');
                             }
-                        } else if (o.kind === 'gap') {
-                            // 크레바스: 공중이거나 거대하면 건넌다. 다 지나가야 끝
+                        } else if (o.kind === 'creek') {
+                            // 시냇물: 공중이거나 거대하면 건넌다. 다 지나가야 끝
                             if (!air && !giant && !inv) {
                                 o.done = true;
                                 if (st.shields > 0) { st.shields--; st.invUntil = st.t + 1; st.jumpT = 0; st.jumpBoost = 0.8; say('🛡️ 휴, 살았다!'); }
-                                else { die('gap'); break; }
+                                else { die('creek'); break; }
                             } else if (o.s + half <= st.s) o.done = true;
                         } else if (dx < R + OBJ_HALF[o.kind] && !air) {
                             if (giant || inv) {
-                                if (giant && (o.kind === 'ice' || o.kind === 'snowman')) { o.done = true; world.give(o.mesh); say('🦖 쾅!'); }
+                                if (giant && (o.kind === 'rock' || o.kind === 'stump')) { o.done = true; world.give(o.mesh); say('🦖 쾅!'); }
                                 continue;
                             }
                             o.done = true;
                             if (st.shields > 0) {
                                 st.shields--; st.invUntil = st.t + 1; world.give(o.mesh);
-                                say(o.kind === 'hole' ? '🛡️ 영차! 빠져나왔다' : '🛡️ 와장창!');
+                                say(o.kind === 'puddle' ? '🛡️ 영차! 빠져나왔다' : '🛡️ 쾅! 버텼다');
                             } else { die(o.kind); break; }
                         }
                     }
                     if (o.s < st.s - 12) { world.give(o.mesh); st.objs.splice(i, 1); }
                 }
-                // 자석: 앞쪽 물고기가 펫에게 날아온다
-                if (magnet) for (const o of st.objs) if (o.kind === 'fish' && !o.done && o.s - st.s < 22) {
+                // 자석: 앞쪽 사과가 펫에게 날아온다
+                if (magnet) for (const o of st.objs) if (o.kind === 'fruit' && !o.done && o.s - st.s < 22) {
                     o.u += (st.u - o.u) * Math.min(1, dt * 5);
                     o.mesh.userData.raised = (o.mesh.userData.raised as number) + ((st.y + 0.9) - (o.mesh.userData.raised as number)) * Math.min(1, dt * 5);
                     const [x, , z] = worldAt(o.s, o.u); o.mesh.position.x = x; o.mesh.position.z = z;
@@ -321,7 +322,7 @@ export function RunGame({ char, friends, onOver }: Props) {
             } else if (dead) {
                 // 넘어짐 (웅덩이면 풍덩 빠진다)
                 const f = (now - st.deadAt) / 900;
-                if (st.deadKind === 'hole' || st.deadKind === 'gap') { st.y = -Math.min(1, f) * (st.deadKind === 'gap' ? 6 : 1.4); poseFall(rig, Math.min(1, f) * 0.3); }
+                if (st.deadKind === 'puddle' || st.deadKind === 'creek') { st.y = -Math.min(1, f) * (st.deadKind === 'creek' ? 6 : 1.4); poseFall(rig, Math.min(1, f) * 0.3); }
                 else { poseFall(rig, f); st.y = Math.max(0, st.y - dt * 6); }
             } else {
                 poseIdle(rig, st.t + COUNT_S);
@@ -337,10 +338,10 @@ export function RunGame({ char, friends, onOver }: Props) {
             world.shadow.scale.set(sh, sh, 1);
             rig.root.visible = !(playing && st.t < st.invUntil && Math.floor(st.t * 12) % 2 === 1);
 
-            // 물고기는 빙글빙글
-            for (const o of st.objs) if ((o.kind === 'fish' || o.kind === 'seed') && !o.done) {
+            // 사과는 빙글빙글
+            for (const o of st.objs) if ((o.kind === 'fruit' || o.kind === 'seed') && !o.done) {
                 o.mesh.rotation.y += dt * 3.5;
-                if (o.kind === 'fish') o.mesh.position.y = worldAt(o.s, o.u)[1] + (o.mesh.userData.raised as number) + Math.sin(now / 250 + o.s) * 0.15;
+                if (o.kind === 'fruit') o.mesh.position.y = worldAt(o.s, o.u)[1] + (o.mesh.userData.raised as number) + Math.sin(now / 250 + o.s) * 0.15;
             }
 
             // 카메라: 펫 뒤 위에서 따라간다. 3·2·1 동안은 앞에서 얼굴을 보다가 뒤로 돈다
@@ -383,7 +384,7 @@ export function RunGame({ char, friends, onOver }: Props) {
             <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
             <View style={styles.hud} pointerEvents="none">
                 <Text style={styles.score}>{hud.dist}m</Text>
-                <Text style={styles.side}>🐟 {hud.fish}{hud.shields > 0 ? `  ${'🛡️'.repeat(Math.min(hud.shields, 3))}` : ''}</Text>
+                <Text style={styles.side}>🍎 {hud.fish}{hud.shields > 0 ? `  ${'🛡️'.repeat(Math.min(hud.shields, 3))}` : ''}</Text>
             </View>
             {hud.power && !hud.dead && <Text style={styles.power} pointerEvents="none">{hud.power}</Text>}
             {hud.flash && !hud.dead && <Text style={styles.flash} pointerEvents="none">{hud.flash}</Text>}

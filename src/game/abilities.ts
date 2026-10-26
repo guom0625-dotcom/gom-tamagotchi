@@ -56,13 +56,13 @@ export const STAGE_NOTE: Record<BodyStage, string> = {
     adult: '성인: 가장 빠르고 잘 안 맞고 능력이 가장 세요',
 };
 
-// ── 얼음길 달리기 (슈퍼펭귄처럼 기울여 방향, 눌러 점프) ──
+// ── 숲길 달리기 (슈퍼펭귄처럼 기울여 방향, 눌러 점프) ──
 export interface RunAbility {
     steer: number;        // 좌우로 움직이는 빠르기 배수
     jump: number;         // 공중에 떠 있는 시간 배수
     hit: number;          // 부딪히는 범위 배수
     shields: number;      // 부딪혀도 버티는 횟수 (곰)
-    magnet: number;       // 물고기를 끌어오는 범위 배수 (고양이)
+    magnet: number;       // 사과를 끌어오는 범위 배수 (고양이)
     seed?: { every: number; dur: number };   // 해바라기씨 무적 (햄스터)
     text: string;
 }
@@ -84,7 +84,7 @@ export function runAbilityOf(species: Species, stage: BodyStage, build: Build = 
         }
         case 'cat': {
             const k = [1.8, 2.4, 3][i];
-            return { ...base, magnet: k, text: `🐟 물고기를 좋아해서 멀리 있는 것도 끌어와요 (×${k})` };
+            return { ...base, magnet: k, text: `🍎 눈이 밝아 멀리 있는 사과도 끌어와요 (×${k})` };
         }
         case 'rabbit': {
             const k = [1.25, 1.4, 1.55][i];

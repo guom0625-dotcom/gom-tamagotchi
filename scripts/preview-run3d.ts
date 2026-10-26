@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { renderPNG } from './r3d';
 import { World } from '../src/game3d/world';
-import { worldAt, headingAt } from '../src/game3d/track';
+import { worldAt, headingAt, slopeAt } from '../src/game3d/track';
 import { buildPet, poseRun, poseIdle } from '../src/game3d/petMesh';
 import { petModel } from '../src/pet/model';
 const W = 270, H = 520;
@@ -14,10 +14,11 @@ world.scene.add(rig.root);
 const [px, py, pz] = worldAt(S, U); rig.root.position.set(px, py, pz); rig.root.rotation.y = headingAt(S);
 if (INTRO) poseIdle(rig, 0.3); else poseRun(rig, 1.2, 0.3, false);
 world.shadow.position.set(...worldAt(S, U, 0.04)); world.shadow.scale.set(0.67, 0.67, 1);
-const put = (kind: any, s: number, u: number, up = 0) => { const m = world.take(kind)!; const [x, y, z] = worldAt(s, u); m.position.set(x, y + up, z); m.rotation.y = headingAt(s); };
-put('ice', S + 14, -0.5); put('snowman', S + 14, 0.55); put('hole', S + 26, 0.1); put('ramp', S + 40, -0.3);
-for (let i = 0; i < 5; i++) put('fish', S + 6 + i * 2.5, 0.2, 0.9);
-for (let i = 0; i < 4; i++) put('fish', S + 44 + i * 3.4, -0.3, 3.4);
+const put = (kind: any, s: number, u: number, up = 0) => { const m = world.take(kind)!; const [x, y, z] = worldAt(s, u); m.position.set(x, y + up, z); m.rotation.order = 'YXZ'; m.rotation.set(['puddle', 'creek', 'ramp'].includes(kind) ? Math.atan(slopeAt(s).dy) : 0, headingAt(s), 0); };
+put('rock', S + 14, -0.5); put('stump', S + 14, 0.55); put('puddle', S + 26, 0.1); put('ramp', S + 40, -0.3); put('creek', S + 60, 0);
+{ const m = world.take('friend')!; const [x, y, z] = worldAt(S + 8, -0.1); m.position.set(x, y, z); m.rotation.y = headingAt(S + 8); const fr = buildPet(petModel('squirrel', 1, 'sad', 'baby'), 1.75); fr.root.rotation.y = Math.PI; poseIdle(fr, 1); m.getObjectByName('inside')!.add(fr.root); }
+for (let i = 0; i < 5; i++) put('fruit', S + 18 + i * 2.5, 0.3, 0.9);
+for (let i = 0; i < 4; i++) put('fruit', S + 44 + i * 3.4, -0.3, 3.4);
 world.prepare(S);
 const cam = world.camera;
 if (INTRO) { cam.position.set(...worldAt(S + 4.5, U, 1.7)); cam.lookAt(new THREE.Vector3(...worldAt(S, U, 1.0))); }

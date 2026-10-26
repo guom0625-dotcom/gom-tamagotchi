@@ -1,4 +1,4 @@
-// 미니게임 — 💩 똥피하기 / 🐧 얼음길 달리기. 게임·캐릭터 고르기 → 게임 → 결과. 점수와 순위는 서버가 관리한다 (게임마다 따로, 판수는 같이).
+// 미니게임 — 💩 똥피하기 / 🌲 숲길 달리기. 게임·캐릭터 고르기 → 게임 → 결과. 점수와 순위는 서버가 관리한다 (게임마다 따로, 판수는 같이).
 // 지금 키우는 펫(알·떠남 제외)이나 도감(졸업)의 펫으로만 할 수 있다. 보상은 키우는 펫의 기분좋음.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
@@ -28,7 +28,7 @@ const ERRORS: Record<string, string> = {
 };
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}초`;
 const fmt = (kind: GameKind, score: number) => kind === 'poop' ? secs(score) : `${score}점`;
-const GAMES: { kind: GameKind; label: string }[] = [{ kind: 'run', label: '🐧 얼음길 달리기' }, { kind: 'poop', label: '💩 똥피하기' }];
+const GAMES: { kind: GameKind; label: string }[] = [{ kind: 'run', label: '🌲 숲길 달리기' }, { kind: 'poop', label: '💩 똥피하기' }];
 
 interface Char extends GameChar { id: string; name: string; current: boolean }
 
@@ -146,12 +146,12 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
                                 ))}
                             </View>
                             <Text style={styles.note}>{kind === 'run'
-                                ? '폰을 기울여 좌우로 움직이고, 화면을 누르면 점프해요. 얼음은 피하거나 뛰어넘고, 물웅덩이는 뛰어넘어요. 🐟 물고기는 10점!'
+                                ? '폰을 기울여 좌우로 움직이고, 화면을 누르면 점프해요. 바위·그루터기는 피하거나 뛰어넘고, 웅덩이·시냇물은 뛰어넘어요. 🍎 사과는 10점! 우리에 갇힌 친구를 구하면 파워업!'
                                 : '하늘에서 떨어지는 똥을 피해요. 아래 ◀ ▶ 칸을 꾹 눌러 움직여요.'}</Text>
                             {phase === 'over' && result && result.kind === kind && (
                                 <View style={[styles.box, styles.resultBox]}>
                                     <Text style={styles.resultScore}>{result.run ? `${result.score}점!` : `${secs(result.score)} 버텼어요!`}</Text>
-                                    {result.run && <Text style={styles.resultNote}>{result.run.dist}m 달리고 🐟 {result.run.fish}마리</Text>}
+                                    {result.run && <Text style={styles.resultNote}>{result.run.dist}m 달리고 🍎 {result.run.fish}개</Text>}
                                     {newRecord && <Text style={styles.newRecord}>🎉 내 최고 기록!</Text>}
                                     {info?.rank && <Text style={styles.resultNote}>전체 {info.players}명 중 {info.rank}등 · 최고 {fmt(kind, info.best ?? 0)}</Text>}
                                     {current && <Text style={styles.resultNote}>😊 {current.name}의 기분이 좋아졌어요</Text>}
