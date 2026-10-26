@@ -200,14 +200,18 @@ function rockGeom() {
         .add(0.5, 0, 0.5, 1.3, 0.6, 1.0, '#868A8F', '#7FB25A');
 }
 function stumpGeom() {
+    // 흙길과 구분되게 진한 껍질 + 초록 이끼 + 빨간 버섯 (2026-10-26 사용자: 구분이 안 됨)
     return new BoxBuilder()
-        .add(-0.8, 0, -0.8, 0.8, 1.3, 0.8, '#8A5A3B', '#E3C08A')
-        .add(-0.55, 1.3, -0.55, 0.55, 1.32, 0.55, '#C99A62', undefined, undefined, false)      // 나이테
-        .add(-0.25, 1.32, -0.25, 0.25, 1.34, 0.25, '#B5844F', undefined, undefined, false)
-        .add(-1.15, 0, -0.25, -0.8, 0.35, 0.25, '#7A4F33')                                       // 뿌리
-        .add(0.8, 0, -0.2, 1.1, 0.3, 0.2, '#7A4F33')
-        .add(0.4, 0.7, 0.8, 0.75, 1.0, 0.95, '#E8483F')                                          // 버섯 하나
-        .add(0.52, 0.5, 0.82, 0.62, 0.7, 0.9, '#F5EBDD');
+        .add(-0.85, 0, -0.85, 0.85, 1.6, 0.85, '#5A3822', '#F0D29A')
+        .add(-0.88, 1.15, -0.88, 0.88, 1.35, 0.88, '#5DB955')                                   // 이끼 띠
+        .add(-0.6, 1.6, -0.6, 0.6, 1.62, 0.6, '#D9AF72', undefined, undefined, false)           // 나이테
+        .add(-0.3, 1.62, -0.3, 0.3, 1.64, 0.3, '#B5844F', undefined, undefined, false)
+        .add(-1.2, 0, -0.25, -0.85, 0.4, 0.25, '#4A2E1C')                                        // 뿌리
+        .add(0.85, 0, -0.2, 1.15, 0.35, 0.2, '#4A2E1C')
+        .add(0.25, 0.75, 0.85, 0.75, 1.05, 1.05, '#FF3B30', '#FF5A50')                            // 버섯 둘
+        .add(0.42, 0.5, 0.88, 0.58, 0.75, 0.98, '#F5EBDD')
+        .add(-0.7, 0.45, 0.85, -0.3, 0.7, 1.0, '#FF3B30', '#FF5A50')
+        .add(-0.56, 0.25, 0.88, -0.44, 0.45, 0.96, '#F5EBDD');
 }
 function fruitGeom() {
     return new BoxBuilder()
@@ -218,12 +222,13 @@ function fruitGeom() {
         .add(-0.2, 0.08, 0.32, -0.08, 0.2, 0.34, '#FFB0A8', undefined, undefined, false);       // 반짝
 }
 function rampGeom() {
+    // 밟으면 좋은 것: 노랑·빨강 줄무늬 (흙길과 구분, 장애물과 다르게)
     const b = new BoxBuilder();
     for (let i = 0; i < 6; i++) {
         const z0 = 1.6 - i * 0.55, h = 0.18 + i * 0.2;
-        b.add(-1.3, 0, z0 - 0.55, 1.3, h, z0, i % 2 ? '#B07A45' : '#C98E55', i % 2 ? '#C48A55' : '#DDA56A');
+        b.add(-1.3, 0, z0 - 0.55, 1.3, h, z0, i % 2 ? '#FF4F4F' : '#FFC83A', i % 2 ? '#FF7070' : '#FFE070');
     }
-    b.add(-1.45, 0, -1.7, -1.3, 1.3, 1.6, '#8A5A3B').add(1.3, 0, -1.7, 1.45, 1.3, 1.6, '#8A5A3B');
+    b.add(-1.45, 0, -1.7, -1.3, 1.3, 1.6, '#FFFFFF').add(1.3, 0, -1.7, 1.45, 1.3, 1.6, '#FFFFFF');
     return b;
 }
 function seedGeom() {
@@ -381,20 +386,26 @@ export class World {
         // 장애물 칸 미리 만들기
         const objMat = voxelMaterial();
         const fruitMat = voxelMaterial({ emissive: new THREE.Color('#3A0A00') });
-        const puddleMat = new THREE.MeshLambertMaterial({ color: '#6E8FA8' });
-        const rimMat = new THREE.MeshLambertMaterial({ color: '#8A6A45' });
+        // 웅덩이: 파란 물 + 하얀 반짝임 + 두꺼운 진흙 테두리 (회색이라 그림자와 헷갈렸다)
+        const puddleMat = new THREE.MeshLambertMaterial({ color: '#2F86D8', emissive: new THREE.Color('#0A2A55') });
+        const rimMat = new THREE.MeshLambertMaterial({ color: '#6B4A2A' });
+        const glintMat = new THREE.MeshBasicMaterial({ color: '#DDF2FF' });
         const builders = { rock: rockGeom(), stump: stumpGeom(), fruit: fruitGeom(), ramp: rampGeom(), seed: seedGeom(), creek: creekGeom(), friend: cageGeom() };
         type K = keyof typeof builders;
         const geo = Object.fromEntries(Object.entries(builders).map(([k, b]) => [k, b.build()])) as Record<K, THREE.BufferGeometry>;
         const line = Object.fromEntries(Object.entries(builders).map(([k, b]) => [k, b.buildOutline(k === 'fruit' || k === 'friend' ? 0.03 : OUT)])) as Record<K, THREE.BufferGeometry>;
-        const puddleGeo = new THREE.CircleGeometry(1.4, 22), rimGeo = new THREE.RingGeometry(1.4, 1.75, 22);
-        this.disposables.push(objMat, fruitMat, puddleMat, rimMat, puddleGeo, rimGeo, ...Object.values(geo), ...Object.values(line));
+        const puddleGeo = new THREE.CircleGeometry(1.4, 22), rimGeo = new THREE.RingGeometry(1.35, 1.9, 22), glintGeo = new THREE.PlaneGeometry(0.9, 0.12);
+        this.disposables.push(objMat, fruitMat, puddleMat, rimMat, glintMat, glintGeo, puddleGeo, rimGeo, ...Object.values(geo), ...Object.values(line));
         const make = (kind: ObjKind): THREE.Object3D => {
             if (kind === 'puddle') {
                 const g = new THREE.Group();
                 const w = new THREE.Mesh(puddleGeo, puddleMat); w.rotation.x = -Math.PI / 2; w.position.y = 0.03;
                 const rim = new THREE.Mesh(rimGeo, rimMat); rim.rotation.x = -Math.PI / 2; rim.position.y = 0.05;
                 g.add(w, rim);
+                for (const [gx, gz] of [[-0.3, 0.2], [0.35, -0.35]]) {
+                    const gl = new THREE.Mesh(glintGeo, glintMat); gl.rotation.x = -Math.PI / 2; gl.position.set(gx, 0.06, gz);
+                    g.add(gl);
+                }
                 return g;
             }
             const m = new THREE.Mesh(geo[kind], kind === 'fruit' || kind === 'seed' ? fruitMat : objMat);
