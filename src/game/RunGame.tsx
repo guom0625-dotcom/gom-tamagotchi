@@ -220,7 +220,11 @@ export function RunGame({ char, friends, onOver }: Props) {
             if (playing) {
                 // 앞으로: 점점 빨라진다. 내리막이면 조금 더
                 const power = st.power && st.t < st.powerUntil ? st.power : null;
-                if (!power && st.power) { st.power = null; say('파워업 끝!'); }
+                if (!power && st.power) {
+                    // 로켓에서 내려오면 2초 무적 (착지하자마자 장애물에 죽지 않게)
+                    if (st.power === 'rocket') st.invUntil = Math.max(st.invUntil, st.t + 2);
+                    st.power = null; say('파워업 끝!');
+                }
                 const rocket = power === 'rocket', magnet = power === 'magnet', giant = power === 'giant';
                 const base = Math.min(34, 15 + 0.32 * st.t) * (1 - slopeAt(st.s).dy * 0.6);
                 const v = rocket ? Math.min(58, Math.max(base * 1.8, 45)) : base;
