@@ -270,7 +270,7 @@ export function HomeScreen() {
                             </>
                         )}
                         <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
-                        {data.dex && <Button variant="ghost" size="sm" label="💩 똥피하기" onPress={() => setGameOpen(true)} />}
+                        {data.dex && <Button variant="ghost" size="sm" label="🎮 미니게임" onPress={() => setGameOpen(true)} />}
                         {data.dex && <Button variant="ghost" size="sm" label={`📖 도감 ${data.dex.pets.length > 0 ? new Set(data.dex.pets.map(d => `${d.species}:${d.variant}`)).size : 0}/${data.dex.total}`} onPress={() => setDexOpen(true)} />}
                     </View>
                     {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(heldFullness ?? pet.fullness)}{'🤍'.repeat(3 - (heldFullness ?? pet.fullness))}</Text>}

@@ -1,4 +1,4 @@
-// 미니게임 💩 똥피하기 — 캐릭터 고르기 → 게임 → 결과. 점수와 순위는 서버가 관리한다.
+// 미니게임 — 💩 똥피하기 / 🐧 얼음길 달리기. 게임·캐릭터 고르기 → 게임 → 결과. 점수와 순위는 서버가 관리한다 (게임마다 따로, 판수는 같이).
 // 지금 키우는 펫(알·떠남 제외)이나 도감(졸업)의 펫으로만 할 수 있다. 보상은 키우는 펫의 기분좋음.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
@@ -7,10 +7,11 @@ import { api, ApiError } from '../api/client';
 import { Button } from './Button';
 import { PetThumb } from './DexModal';
 import { PoopGame, type GameChar } from '../game/PoopGame';
-import { abilityOf, STAGE_NOTE } from '../game/abilities';
+import { RunGame, type RunResult } from '../game/RunGame';
+import { abilityOf, runAbilityOf, STAGE_NOTE } from '../game/abilities';
 import { isSpecies, lookTitle, type Species } from '../pet/species';
 import type { Build, BodyStage, Outfit } from '../pet/model';
-import type { DexPet, GameInfo } from '../pet/api';
+import type { DexPet, GameInfo, GameKind } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 const EMOJI: Record<Species, string> = { bear: '🐻', dog: '🐶', cat: '🐱', rabbit: '🐰', squirrel: '🐿️', hamster: '🐹' };
@@ -26,6 +27,8 @@ const ERRORS: Record<string, string> = {
     expired: '너무 오래 지나서 기록하지 못했어요',
 };
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}초`;
+const fmt = (kind: GameKind, score: number) => kind === 'poop' ? secs(score) : `${score}점`;
+const GAMES: { kind: GameKind; label: string }[] = [{ kind: 'run', label: '🐧 얼음길 달리기' }, { kind: 'poop', label: '💩 똥피하기' }];
 
 interface Char extends GameChar { id: string; name: string; current: boolean }
 
@@ -43,11 +46,12 @@ interface Props {
 
 export function GameModal({ visible, onClose, current, currentBlock, dex, onPlayed }: Props) {
     const insets = useSafeAreaInsets();
+    const [kind, setKind] = useState<GameKind>('run');
     const [info, setInfo] = useState<GameInfo | null>(null);
     const [phase, setPhase] = useState<'pick' | 'play' | 'over'>('pick');
     const [pickId, setPickId] = useState<string | null>(null);
     const [game, setGame] = useState<{ id: string; char: Char; n: number } | null>(null);
-    const [result, setResult] = useState<{ score: number; prevBest: number | null } | null>(null);
+    const [result, setResult] = useState<{ kind: GameKind; score: number; prevBest: number | null; run?: RunResult } | null>(null);
     const [msg, setMsg] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -65,14 +69,20 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
     }, [current, dex]);
     const picked = chars.find(c => c.id === pickId) ?? chars.find(c => !(c.current && currentBlock)) ?? null;
 
-    const load = useCallback(async () => {
-        try { setInfo(await api<GameInfo>('/pet/game')); } catch { /* 다음에 */ }
+    const load = useCallback(async (k: GameKind) => {
+        try { setInfo(await api<GameInfo>(`/pet/game?kind=${k}`)); } catch { /* 다음에 */ }
     }, []);
     useEffect(() => {
         if (!visible) return;
         setPhase('pick'); setMsg(null); setResult(null);
-        void load();
+        void load(kind);
     }, [visible, load]);
+    const pickGame = (k: GameKind) => {
+        if (k === kind) return;
+        setKind(k); setInfo(null); setResult(null); setPhase('pick'); setMsg(null);
+        void load(k);
+    };
+    const rowScore = (r: { score?: number; score_ms: number }) => r.score ?? r.score_ms;
 
     const errText = (e: unknown) => {
         const code = e instanceof ApiError ? (e.body as { error?: string })?.error : null;
@@ -84,7 +94,7 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
         if (picked.current && currentBlock) { setMsg(currentBlock); return; }
         setBusy(true); setMsg(null);
         try {
-            const r = await api<GameInfo & { game: { id: string } }>('/pet/game/start', { method: 'POST', body: JSON.stringify({ pet_id: picked.id }) });
+            const r = await api<GameInfo & { game: { id: string } }>('/pet/game/start', { method: 'POST', body: JSON.stringify({ pet_id: picked.id, kind }) });
             setInfo(r);
             setResult(null);
             if (r.plays_left <= 0 && r.price) onPlayed();   // 토파즈를 냈으면 잔고를 다시 읽는다
@@ -95,13 +105,13 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
         } finally { setBusy(false); }
     };
 
-    const over = async (score: number) => {
+    const over = async (ms: number, score: number, run?: RunResult) => {
         if (!game) return;
         const prevBest = info?.best ?? null;
-        setResult({ score, prevBest });
+        setResult({ kind, score, prevBest, run });
         setPhase('over');
         try {
-            setInfo(await api<GameInfo>('/pet/game/end', { method: 'POST', body: JSON.stringify({ id: game.id, score_ms: score }) }));
+            setInfo(await api<GameInfo>('/pet/game/end', { method: 'POST', body: JSON.stringify({ id: game.id, score_ms: ms, score }) }));
             onPlayed();
         } catch (e) {
             setMsg(errText(e));
@@ -116,19 +126,32 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
             <View style={[styles.screen, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
                 <View style={styles.inner}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>💩 똥피하기</Text>
+                        <Text style={styles.title}>🎮 미니게임</Text>
                         {info && <Text style={styles.plays}>{info.plays_left > 0 ? `오늘 무료 ${info.plays_left}/${info.plays_per_day}판` : info.price ? `무료 판 끝 · 한 판 🔶${info.price}` : '오늘은 다 했어요'}</Text>}
                     </View>
 
                     {phase === 'play' && game ? (
-                        <PoopGame key={game.n} char={game.char} onOver={over} />
+                        kind === 'run'
+                            ? <RunGame key={game.n} char={game.char} onOver={r => void over(r.ms, r.score, r)} />
+                            : <PoopGame key={game.n} char={game.char} onOver={ms => void over(ms, ms)} />
                     ) : (
                         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 14, paddingBottom: 12 }}>
-                            {phase === 'over' && result && (
+                            <View style={styles.tabs}>
+                                {GAMES.map(g => (
+                                    <Pressable key={g.kind} onPress={() => pickGame(g.kind)} style={[styles.tab, kind === g.kind && styles.tabOn]}>
+                                        <Text style={[styles.tabText, kind === g.kind && styles.tabTextOn]}>{g.label}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                            <Text style={styles.note}>{kind === 'run'
+                                ? '폰을 기울여 좌우로 움직이고, 화면을 누르면 점프해요. 얼음은 피하거나 뛰어넘고, 물웅덩이는 뛰어넘어요. 🐟 물고기는 10점!'
+                                : '하늘에서 떨어지는 똥을 피해요. 아래 ◀ ▶ 칸을 꾹 눌러 움직여요.'}</Text>
+                            {phase === 'over' && result && result.kind === kind && (
                                 <View style={[styles.box, styles.resultBox]}>
-                                    <Text style={styles.resultScore}>{secs(result.score)} 버텼어요!</Text>
+                                    <Text style={styles.resultScore}>{result.run ? `${result.score}점!` : `${secs(result.score)} 버텼어요!`}</Text>
+                                    {result.run && <Text style={styles.resultNote}>{result.run.dist}m 달리고 🐟 {result.run.fish}마리</Text>}
                                     {newRecord && <Text style={styles.newRecord}>🎉 내 최고 기록!</Text>}
-                                    {info?.rank && <Text style={styles.resultNote}>전체 {info.players}명 중 {info.rank}등 · 최고 {secs(info.best ?? 0)}</Text>}
+                                    {info?.rank && <Text style={styles.resultNote}>전체 {info.players}명 중 {info.rank}등 · 최고 {fmt(kind, info.best ?? 0)}</Text>}
                                     {current && <Text style={styles.resultNote}>😊 {current.name}의 기분이 좋아졌어요</Text>}
                                 </View>
                             )}
@@ -151,7 +174,7 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
                             {picked && (
                                 <View style={styles.box}>
                                     <Text style={styles.boxTitle}>{EMOJI[picked.species]} {picked.name} ({STAGE_NAME[picked.stage]})</Text>
-                                    <Text style={styles.boxText}>{abilityOf(picked.species, picked.stage, picked.build).text}</Text>
+                                    <Text style={styles.boxText}>{(kind === 'run' ? runAbilityOf : abilityOf)(picked.species, picked.stage, picked.build).text}</Text>
                                     <Text style={styles.note}>{STAGE_NOTE[picked.stage]}{picked.build === 'fat' || picked.build === 'chubby' ? ' · 살이 쪄서 조금 느려요' : ''}</Text>
                                     {picked.current && currentBlock && <Text style={styles.warn}>{currentBlock}</Text>}
                                 </View>
@@ -170,10 +193,10 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
                                     <Text style={styles.rankName} numberOfLines={1}>
                                         {r.student} <Text style={styles.rankPet}>{isSpecies(r.species) ? EMOJI[r.species] : ''} {r.pet ?? ''}</Text>
                                     </Text>
-                                    <Text style={styles.rankScore}>{secs(r.score_ms)}</Text>
+                                    <Text style={styles.rankScore}>{fmt(kind, rowScore(r))}</Text>
                                 </View>
                             ))}
-                            {info?.rank && info.rank > 10 && <Text style={styles.note}>나는 {info.rank}등 · {secs(info.best ?? 0)}</Text>}
+                            {info?.rank && info.rank > 10 && <Text style={styles.note}>나는 {info.rank}등 · {fmt(kind, info.best ?? 0)}</Text>}
                         </ScrollView>
                     )}
 
@@ -192,6 +215,11 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     title: { fontFamily: fontFamilies.display, fontSize: 24, color: colors.ink[900] },
     plays: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.ink[500] },
+    tabs: { flexDirection: 'row', gap: 8 },
+    tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: radius.md, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.ink[100] },
+    tabOn: { backgroundColor: colors.sky[100], borderColor: colors.sky[500] },
+    tabText: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.ink[500] },
+    tabTextOn: { color: colors.ink[900] },
     section: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.lg, color: colors.ink[700] },
     note: { fontFamily: fontFamilies.body, fontSize: fontSizes.sm, color: colors.ink[500] },
     warn: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.coral[700], textAlign: 'center' },
