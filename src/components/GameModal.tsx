@@ -67,6 +67,8 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
         }
         return list;
     }, [current, dex]);
+    // 달리기에서 얼음에 갇혀 나올 친구들 (도감)
+    const friends = useMemo(() => dex.filter(d => isSpecies(d.species)).map(d => ({ species: d.species as Species, variant: d.variant })), [dex]);
     const picked = chars.find(c => c.id === pickId) ?? chars.find(c => !(c.current && currentBlock)) ?? null;
 
     const load = useCallback(async (k: GameKind) => {
@@ -132,7 +134,7 @@ export function GameModal({ visible, onClose, current, currentBlock, dex, onPlay
 
                     {phase === 'play' && game ? (
                         kind === 'run'
-                            ? <RunGame key={game.n} char={game.char} onOver={r => void over(r.ms, r.score, r)} />
+                            ? <RunGame key={game.n} char={game.char} friends={friends} onOver={r => void over(r.ms, r.score, r)} />
                             : <PoopGame key={game.n} char={game.char} onOver={ms => void over(ms, ms)} />
                     ) : (
                         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 14, paddingBottom: 12 }}>

@@ -136,9 +136,12 @@ function buildChunk(index: number): BoxBuilder {
 const OUT = 0.05;   // 테두리 두께 (m)
 
 // ── 장애물·물고기 ────────────────────────────────
-export type ObjKind = 'ice' | 'snowman' | 'hole' | 'fish' | 'ramp' | 'seed';
+// friend = 얼음에 갇힌 친구 (구하면 파워업), gap = 길 전체를 가로지르는 크레바스 (꼭 뛰어넘어야 한다)
+export type ObjKind = 'ice' | 'snowman' | 'hole' | 'fish' | 'ramp' | 'seed' | 'friend' | 'gap';
 /** 부딪힘 반폭 (m) */
-export const OBJ_HALF: Record<ObjKind, number> = { ice: 1.15, snowman: 0.85, hole: 1.4, fish: 0.6, ramp: 1.3, seed: 0.8 };
+export const OBJ_HALF: Record<ObjKind, number> = { ice: 1.15, snowman: 0.85, hole: 1.4, fish: 0.6, ramp: 1.3, seed: 0.8, friend: 1.2, gap: HW };
+/** 크레바스 앞뒤 길이 (m) */
+export const GAP_LEN = 5;
 
 function iceGeom() {
     return new BoxBuilder()
@@ -178,6 +181,30 @@ function rampGeom() {
         const z0 = 1.6 - i * 0.55, h = 0.18 + i * 0.2;
         b.add(-1.3, 0, z0 - 0.55, 1.3, h, z0, i % 2 ? '#FF5A5A' : '#FFC83A', i % 2 ? '#FF7A7A' : '#FFE070');
     }
+    return b;
+}
+/** 크레바스: 길 폭 전체에 어두운 틈 + 건너편 얼음 벼랑 (멀리서도 보이게) + 양쪽 경고 말뚝 */
+function gapGeom() {
+    const w = HW + 0.3, L = GAP_LEN / 2;
+    return new BoxBuilder()
+        .add(-w, -0.02, -L, w, 0.03, L, '#08203A', undefined, undefined, false)
+        .add(-w, -0.02, L - 0.6, w, 0.05, L - 0.3, '#1E5A88', undefined, undefined, false)        // 틈 안쪽 벽
+        .add(-w, 0, L, w, 0.18, L + 0.35, '#E6F7FF')                                              // 이쪽 턱
+        .add(-w, 0, -L - 0.5, w, 0.75, -L, '#6FC0EC', '#F2FBFF')                                  // 건너편 벼랑
+        .add(-w - 0.25, 0, L + 0.6, -w + 0.15, 1.5, L + 1.0, '#FFC83A', '#222222')               // 경고 말뚝
+        .add(w - 0.15, 0, L + 0.6, w + 0.25, 1.5, L + 1.0, '#FFC83A', '#222222')
+        .add(-w - 0.25, 1.1, L + 0.55, -w + 0.15, 1.3, L + 1.05, '#222222')
+        .add(w - 0.15, 1.1, L + 0.55, w + 0.25, 1.3, L + 1.05, '#222222');
+}
+/** 갇힌 친구를 가두는 얼음 상자: 반투명 면 + 하얀 모서리 */
+function cageGeom() {
+    return new BoxBuilder().add(-1.2, 0, -1.2, 1.2, 2.5, 1.2, '#BDEBFF', '#F2FBFF', undefined, false);
+}
+function cageFrame() {
+    const b = new BoxBuilder(), t = 0.09, x = 1.2, h = 2.5, c = '#F2FBFF';
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(sx * x - t, 0, sz * x - t, sx * x + t, h, sz * x + t, c);   // 세로
+    for (const y of [0, h]) for (const sz of [-1, 1]) b.add(-x, y - t, sz * x - t, x, y + t, sz * x + t, c);                // 가로 (x)
+    for (const y of [0, h]) for (const sx of [-1, 1]) b.add(sx * x - t, y - t, -x, sx * x + t, y + t, x, c);                // 가로 (z)
     return b;
 }
 function seedGeom() {
@@ -293,7 +320,27 @@ export class World {
         const line = Object.fromEntries(Object.entries(builders).map(([k, b]) => [k, b.buildOutline(k === 'fish' ? 0.035 : OUT)])) as Record<K, THREE.BufferGeometry>;
         const holeGeo = new THREE.CircleGeometry(1.4, 22), rimGeo = new THREE.RingGeometry(1.4, 1.75, 22);
         this.disposables.push(objMat, fishMat, holeMat, rimMat, holeGeo, rimGeo, ...Object.values(geo), ...Object.values(line));
+        const cageMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false });
+        const cageG = cageGeom().build(), frameB = cageFrame(), cageL = frameB.buildOutline(0.03), frameG = frameB.build();
+        this.disposables.push(frameG);
+        const gapB = gapGeom(), gapG = gapB.build(), gapL = gapB.buildOutline(OUT);
+        this.disposables.push(cageMat, cageG, cageL, gapG, gapL);
         const make = (kind: ObjKind): THREE.Object3D => {
+            if (kind === 'friend') {
+                // 안에 들어갈 친구(펫 그림)는 놓을 때 RunGame 이 'inside' 에 넣는다
+                const g = new THREE.Group();
+                const inside = new THREE.Group(); inside.name = 'inside';
+                const cage = new THREE.Mesh(cageG, cageMat); cage.renderOrder = 2;
+                const frame = new THREE.Mesh(frameG, objMat);
+                frame.add(new THREE.Mesh(cageL, this.lineMat));
+                g.add(inside, frame, cage);
+                return g;
+            }
+            if (kind === 'gap') {
+                const m = new THREE.Mesh(gapG, objMat);
+                m.add(new THREE.Mesh(gapL, this.lineMat));
+                return m;
+            }
             if (kind === 'hole') {
                 const g = new THREE.Group();
                 const w = new THREE.Mesh(holeGeo, holeMat); w.rotation.x = -Math.PI / 2; w.position.y = 0.03;
@@ -305,7 +352,7 @@ export class World {
             m.add(new THREE.Mesh(line[kind], this.lineMat));
             return m;
         };
-        const counts: Record<ObjKind, number> = { ice: 12, snowman: 8, hole: 8, fish: 30, ramp: 4, seed: 2 };
+        const counts: Record<ObjKind, number> = { ice: 12, snowman: 8, hole: 8, fish: 40, ramp: 4, seed: 2, friend: 2, gap: 3 };
         for (const kind of Object.keys(counts) as ObjKind[]) {
             const list: THREE.Object3D[] = [];
             for (let i = 0; i < counts[kind]; i++) { const o = make(kind); o.visible = false; scene.add(o); list.push(o); }
