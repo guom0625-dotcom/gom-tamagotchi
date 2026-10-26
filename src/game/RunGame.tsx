@@ -34,6 +34,11 @@ const POWER_NAME: Record<Power, string> = { rocket: '🚀 로켓', magnet: '🧲
 const FISH_POINTS = 10;
 const PET_H = 1.6;              // 펫 키 (m) — 단계와 상관없이 같게 (크면 잘 부딪혀서 불리했다)
 const COUNT_S = 2.4;            // 3·2·1
+// 좌우 조작 (2026-10-26 사용자: 반응을 더 빠르게) — 예전 값: 무감각 0.04, 배율 3.2, 속도 1.9, 따라잡기 9
+const TILT_DEAD = 0.025;        // 이만큼 덜 기울이면 가만히 (g)
+const TILT_GAIN = 5;            // 약 12° 기울이면 최대로
+const SIDE_SPEED = 2.7;         // 좌우 최대 빠르기 (길 반폭/초)
+const SIDE_SNAP = 18;           // 원하는 빠르기로 얼마나 빨리 바뀌나 (클수록 즉각)
 const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;   // 사과 높이 (보통 / 점프대 위)
 
 interface Hud { dist: number; fish: number; shields: number; count: number; flash: string | null; dead: boolean; power: string | null }
@@ -226,9 +231,9 @@ export function RunGame({ char, friends, onOver }: Props) {
                 let steer: number;
                 if (!noSensorRef.current) {
                     const raw = tilt.current.x - tilt.current.base;
-                    steer = Math.abs(raw) < 0.04 ? 0 : Math.max(-1, Math.min(1, (raw - Math.sign(raw) * 0.04) * 3.2));
+                    steer = Math.abs(raw) < TILT_DEAD ? 0 : Math.max(-1, Math.min(1, (raw - Math.sign(raw) * TILT_DEAD) * TILT_GAIN));
                 } else steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
-                st.vu += (steer * 1.9 * ab.steer - st.vu) * Math.min(1, dt * 9);
+                st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
                 const lim = 1 - (petR / HW) * 0.7;
                 st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
 
@@ -318,7 +323,7 @@ export function RunGame({ char, friends, onOver }: Props) {
                     const [x, , z] = worldAt(o.s, o.u); o.mesh.position.x = x; o.mesh.position.z = z;
                 }
                 st.phase += dt * (8 + v * 0.35);
-                poseRun(rig, st.phase, st.vu / 1.9, air);
+                poseRun(rig, st.phase, st.vu / SIDE_SPEED, air);
             } else if (dead) {
                 // 넘어짐 (웅덩이면 풍덩 빠진다)
                 const f = (now - st.deadAt) / 900;
@@ -331,7 +336,7 @@ export function RunGame({ char, friends, onOver }: Props) {
             // 펫 자리·방향
             const [px, py, pz] = worldAt(st.s, st.u, st.y);
             rig.root.position.set(px, py, pz);
-            rig.root.rotation.y = headingAt(st.s) - st.vu * 0.12;
+            rig.root.rotation.y = headingAt(st.s) - st.vu * 0.09;
             const [gx, gy, gz] = worldAt(st.s, st.u, 0.04);
             world.shadow.position.set(gx, gy, gz);
             const sh = Math.max(0.35, 1 - Math.max(0, st.y) * 0.18) * PET_H * 0.42;
