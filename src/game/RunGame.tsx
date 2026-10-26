@@ -35,8 +35,9 @@ const FISH_POINTS = 10;
 const PET_H = 1.6;              // 펫 키 (m) — 단계와 상관없이 같게 (크면 잘 부딪혀서 불리했다)
 const COUNT_S = 2.4;            // 3·2·1
 // 좌우 조작 (2026-10-26 사용자: 반응을 더 빠르게) — 예전 값: 무감각 0.04, 배율 3.2, 속도 1.9, 따라잡기 9
-const TILT_DEAD = 0.025;        // 이만큼 덜 기울이면 가만히 (g)
-const TILT_GAIN = 5;            // 약 12° 기울이면 최대로
+// 좌우는 켜고 끄기: 기울이면 늘 같은 빠르기 (사용자 결정). 손떨림에 왔다 갔다 하지 않게 켜는 선과 끄는 선을 다르게 둔다
+const TILT_ON = 0.05;           // 약 3° 넘게 기울이면 움직인다 (g)
+const TILT_OFF = 0.03;          // 약 2° 밑으로 돌아오면 멈춘다
 const SIDE_SPEED = 2.7;         // 좌우 최대 빠르기 (길 반폭/초)
 const SIDE_SNAP = 18;           // 원하는 빠르기로 얼마나 빨리 바뀌나 (클수록 즉각)
 const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;   // 사과 높이 (보통 / 점프대 위)
@@ -124,6 +125,7 @@ export function RunGame({ char, friends, onOver }: Props) {
         const petR = normalR * rig.scale * 0.8 * (model.radius / normalR) * ab.hit;
         const cam = world.camera;
 
+        let tiltDir = 0; // 기울인 방향 -1·0·1
         const st = {
             t: -COUNT_S, s: 0, u: 0, vu: 0, phase: 0, y: 0,
             jumpT: -1, jumpDur: 0.72 * ab.jump, jumpH: 2.0 * Math.sqrt(ab.jump), jumpBoost: 1,
@@ -235,7 +237,9 @@ export function RunGame({ char, friends, onOver }: Props) {
                 let steer: number;
                 if (!noSensorRef.current) {
                     const raw = tilt.current.x - tilt.current.base;
-                    steer = Math.abs(raw) < TILT_DEAD ? 0 : Math.max(-1, Math.min(1, (raw - Math.sign(raw) * TILT_DEAD) * TILT_GAIN));
+                    if (Math.abs(raw) > TILT_ON) tiltDir = Math.sign(raw);
+                    else if (Math.abs(raw) < TILT_OFF || Math.sign(raw) !== tiltDir) tiltDir = 0;
+                    steer = tiltDir;
                 } else steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
                 st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
                 const lim = 1 - (petR / HW) * 0.7;
