@@ -38,12 +38,9 @@ const COUNT_S = 2.4;            // 3·2·1
 // 좌우: 각도와 상관없이 기울이면 늘 같은 빠르기 (사용자 결정).
 // 같은 방식이던 v0.0.22 는 빠르기 1.8 이라 한 번 움직임이 너무 컸다 → 느리게 하고 바로 멈추게.
 // 손떨림에 왔다 갔다 하지 않게 켜는 선과 끄는 선을 다르게 둔다
-// 좌우는 '델타 기준' (사용자 결정): 기울기가 이전보다 커지면 오른쪽, 작아지면 왼쪽으로 같은 빠르기로 간다.
-// 가운데(0)를 지나지 않아도 되돌리는 순간 반대로 간다. 기울기가 멈추면 잠깐 뒤 선다.
-const RATE_ON = 0.2;            // 기울기가 이만큼 빨리 바뀌면 그 방향으로 (g/초, 약 12°/초)
-const RATE_OFF = 0.08;          // 이보다 느리게 바뀌면 멈출 준비
-const RATE_HOLD = 0.12;         // 이만큼(초) 멈춰 있으면 선다
-const SIDE_SPEED = 1.6;         // 좌우 빠르기 (길 반폭/초) — 끝에서 끝까지 약 1초
+const TILT_ON = 0.04;           // 약 2.3° 넘게 기울이면 움직인다 (g)
+const TILT_OFF = 0.025;         // 약 1.4° 밑으로 돌아오면 멈춘다
+const SIDE_SPEED = 1.2;         // 좌우 빠르기 (길 반폭/초) — 끝에서 끝까지 약 1.4초
 const SIDE_SNAP = 25;           // 원하는 빠르기로 얼마나 빨리 바뀌나 (클수록 즉각)
 const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;   // 사과 높이 (보통 / 점프대 위)
 
@@ -130,7 +127,7 @@ export function RunGame({ char, friends, onOver }: Props) {
         const petR = normalR * rig.scale * 0.8 * (model.radius / normalR) * ab.hit;
         const cam = world.camera;
 
-        let tiltInit = false, tiltF = 0, tiltPrev = 0, rateF = 0, tiltDir = 0, still = 0; // 기울기 바뀌는 빠르기로 방향을 정한다
+        let tiltDir = 0; // 기울인 방향 -1·0·1
         const st = {
             t: -COUNT_S, s: 0, u: 0, vu: 0, phase: 0, y: 0,
             jumpT: -1, jumpDur: 0.72 * ab.jump, jumpH: 2.0 * Math.sqrt(ab.jump), jumpBoost: 1,
@@ -239,22 +236,16 @@ export function RunGame({ char, friends, onOver }: Props) {
                 st.s += v * dt;
 
                 // 좌우: 기울기
-                const lim = 1 - (petR / HW) * 0.7;
+                let steer: number;
                 if (!noSensorRef.current) {
-                    if (!tiltInit) { tiltInit = true; tiltF = tiltPrev = tilt.current.x; }
-                    tiltF += (tilt.current.x - tiltF) * Math.min(1, dt * 25);
-                    const rate = (tiltF - tiltPrev) / Math.max(dt, 1e-3);
-                    tiltPrev = tiltF;
-                    rateF += (rate - rateF) * Math.min(1, dt * 20);
-                    if (Math.abs(rateF) > RATE_ON) { tiltDir = Math.sign(rateF); still = 0; }
-                    else if (Math.abs(rateF) < RATE_OFF) { still += dt; if (still > RATE_HOLD) tiltDir = 0; }
-                    st.vu += (tiltDir * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
-                    st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
-                } else {
-                    const steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
-                    st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
-                    st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
-                }
+                    const raw = tilt.current.x - tilt.current.base;
+                    if (Math.abs(raw) > TILT_ON) tiltDir = Math.sign(raw);
+                    else if (Math.abs(raw) < TILT_OFF || Math.sign(raw) !== tiltDir) tiltDir = 0;
+                    steer = tiltDir;
+                } else steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
+                st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
+                const lim = 1 - (petR / HW) * 0.7;
+                st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
 
                 // 점프 (점프대는 더 높이·오래)
                 if (T.jump) { T.jump = false; if (st.jumpT < 0) { st.jumpT = 0; st.jumpBoost = 1; } }
@@ -342,7 +333,7 @@ export function RunGame({ char, friends, onOver }: Props) {
                     const [x, , z] = worldAt(o.s, o.u); o.mesh.position.x = x; o.mesh.position.z = z;
                 }
                 st.phase += dt * (8 + v * 0.35);
-                poseRun(rig, st.phase, Math.max(-1, Math.min(1, st.vu / SIDE_SPEED)), air);
+                poseRun(rig, st.phase, st.vu / SIDE_SPEED, air);
             } else if (dead) {
                 // 넘어짐 (웅덩이면 풍덩 빠진다)
                 const f = (now - st.deadAt) / 900;
@@ -355,7 +346,7 @@ export function RunGame({ char, friends, onOver }: Props) {
             // 펫 자리·방향
             const [px, py, pz] = worldAt(st.s, st.u, st.y);
             rig.root.position.set(px, py, pz);
-            rig.root.rotation.y = headingAt(st.s) - Math.max(-2.5, Math.min(2.5, st.vu)) * 0.09;
+            rig.root.rotation.y = headingAt(st.s) - st.vu * 0.09;
             const [gx, gy, gz] = worldAt(st.s, st.u, 0.04);
             world.shadow.position.set(gx, gy, gz);
             const sh = Math.max(0.35, 1 - Math.max(0, st.y) * 0.18) * PET_H * 0.42;
