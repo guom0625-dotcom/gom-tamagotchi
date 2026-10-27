@@ -38,9 +38,11 @@ const COUNT_S = 2.4;            // 3·2·1
 // 좌우: 각도와 상관없이 기울이면 늘 같은 빠르기 (사용자 결정).
 // 같은 방식이던 v0.0.22 는 빠르기 1.8 이라 한 번 움직임이 너무 컸다 → 느리게 하고 바로 멈추게.
 // 손떨림에 왔다 갔다 하지 않게 켜는 선과 끄는 선을 다르게 둔다
-const TILT_ON = 0.04;           // 약 2.3° 넘게 기울이면 움직인다 (g)
-const TILT_OFF = 0.025;         // 약 1.4° 밑으로 돌아오면 멈춘다
-const SIDE_SPEED = 1.2;         // 좌우 빠르기 (길 반폭/초) — 끝에서 끝까지 약 1.4초
+// 기울인 각도 = 길 위 자리 (사용자 제안 '델타 기준'). 기울인 만큼 바로 그만큼 옮겨 가고, 되돌리면 돌아온다.
+// 각도로 빠르기를 정하던 방식은 멈추거나 방향을 바꿀 때 반응이 느렸다
+const TILT_RANGE = 0.17;        // 약 10° 기울이면 길 끝 (g)
+const TILT_FOLLOW = 4.5;        // 그 자리로 따라가는 최대 빠르기 (길 반폭/초)
+const SIDE_SPEED = 1.2;         // 센서 없을 때 화면 누르기 빠르기 (길 반폭/초)
 const SIDE_SNAP = 25;           // 원하는 빠르기로 얼마나 빨리 바뀌나 (클수록 즉각)
 const FISH_Y = 0.9, FISH_HIGH_Y = 3.4;   // 사과 높이 (보통 / 점프대 위)
 
@@ -127,7 +129,7 @@ export function RunGame({ char, friends, onOver }: Props) {
         const petR = normalR * rig.scale * 0.8 * (model.radius / normalR) * ab.hit;
         const cam = world.camera;
 
-        let tiltDir = 0; // 기울인 방향 -1·0·1
+        let tiltF = 0; // 손떨림을 걸러 낸 기울기
         const st = {
             t: -COUNT_S, s: 0, u: 0, vu: 0, phase: 0, y: 0,
             jumpT: -1, jumpDur: 0.72 * ab.jump, jumpH: 2.0 * Math.sqrt(ab.jump), jumpBoost: 1,
@@ -236,16 +238,20 @@ export function RunGame({ char, friends, onOver }: Props) {
                 st.s += v * dt;
 
                 // 좌우: 기울기
-                let steer: number;
+                const lim = 1 - (petR / HW) * 0.7;
                 if (!noSensorRef.current) {
                     const raw = tilt.current.x - tilt.current.base;
-                    if (Math.abs(raw) > TILT_ON) tiltDir = Math.sign(raw);
-                    else if (Math.abs(raw) < TILT_OFF || Math.sign(raw) !== tiltDir) tiltDir = 0;
-                    steer = tiltDir;
-                } else steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
-                st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
-                const lim = 1 - (petR / HW) * 0.7;
-                st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
+                    tiltF += (raw - tiltF) * Math.min(1, dt * 30);
+                    const target = Math.max(-lim, Math.min(lim, tiltF / TILT_RANGE));
+                    const maxStep = TILT_FOLLOW * ab.steer * dt;
+                    const step = Math.max(-maxStep, Math.min(maxStep, target - st.u));
+                    st.u += step;
+                    st.vu += (step / Math.max(dt, 1e-3) - st.vu) * Math.min(1, dt * 12);   // 몸 기울기용
+                } else {
+                    const steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
+                    st.vu += (steer * SIDE_SPEED * ab.steer - st.vu) * Math.min(1, dt * SIDE_SNAP);
+                    st.u = Math.max(-lim, Math.min(lim, st.u + st.vu * dt));
+                }
 
                 // 점프 (점프대는 더 높이·오래)
                 if (T.jump) { T.jump = false; if (st.jumpT < 0) { st.jumpT = 0; st.jumpBoost = 1; } }
@@ -333,7 +339,7 @@ export function RunGame({ char, friends, onOver }: Props) {
                     const [x, , z] = worldAt(o.s, o.u); o.mesh.position.x = x; o.mesh.position.z = z;
                 }
                 st.phase += dt * (8 + v * 0.35);
-                poseRun(rig, st.phase, st.vu / SIDE_SPEED, air);
+                poseRun(rig, st.phase, Math.max(-1, Math.min(1, st.vu / 2)), air);
             } else if (dead) {
                 // 넘어짐 (웅덩이면 풍덩 빠진다)
                 const f = (now - st.deadAt) / 900;
@@ -346,7 +352,7 @@ export function RunGame({ char, friends, onOver }: Props) {
             // 펫 자리·방향
             const [px, py, pz] = worldAt(st.s, st.u, st.y);
             rig.root.position.set(px, py, pz);
-            rig.root.rotation.y = headingAt(st.s) - st.vu * 0.09;
+            rig.root.rotation.y = headingAt(st.s) - Math.max(-2.5, Math.min(2.5, st.vu)) * 0.09;
             const [gx, gy, gz] = worldAt(st.s, st.u, 0.04);
             world.shadow.position.set(gx, gy, gz);
             const sh = Math.max(0.35, 1 - Math.max(0, st.y) * 0.18) * PET_H * 0.42;
