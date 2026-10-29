@@ -8,17 +8,19 @@ import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { Accelerometer } from 'expo-sensors';
 import * as THREE from 'three';
-import { petModel } from '../pet/model';
+import { petModel, type Build, type BodyStage, type Outfit } from '../pet/model';
 import { KINDS, SPECIES, SPECIES_NAME, type Species } from '../pet/species';
 import { BoxBuilder, voxelMaterial } from '../game3d/boxes';
 import { runAbilityOf } from './abilities';
-import type { GameChar } from './PoopGame';
 import { buildPet, poseFall, poseIdle, poseRun } from '../game3d/petMesh';
 import { HW, headingAt, slopeAt, worldAt } from '../game3d/track';
 import { CREEK_LEN, OBJ_HALF, SKY, World, type Obj, type ObjKind } from '../game3d/world';
 import { fontFamilies, fontSizes } from '../theme';
 
 export interface RunResult { ms: number; score: number; dist: number; fish: number }
+
+/** 달리는 펫 */
+export interface GameChar { species: Species; variant: number; stage: BodyStage; build: Build; outfit?: Outfit }
 
 interface Props {
     char: GameChar;

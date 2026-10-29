@@ -10,7 +10,7 @@ import { NameModal } from '../components/NameModal';
 import { isSpecies, lookTitle } from '../pet/species';
 import { ShopModal } from '../components/ShopModal';
 import { DexModal } from '../components/DexModal';
-import { GameModal } from '../components/GameModal';
+import { WalkModal } from '../components/WalkModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
 import type { Build } from '../pet/model';
@@ -195,7 +195,7 @@ export function HomeScreen() {
     };
 
     const condLabel = (key: Cond) =>
-        key === 'feed' ? '🍚 밥 주기' : key === 'pat' ? (egg ? '🥚 품어주기' : '🤚 쓰다듬기') : key === 'clean' ? '🧹 청소' : '🏠 방 넓히기';
+        key === 'feed' ? '🍚 밥 주기' : key === 'pat' ? (egg ? '🥚 품어주기' : '🤚 쓰다듬기') : key === 'clean' ? '🧹 청소' : key === 'walk' ? '🌲 산책' : '🏠 방 넓히기';
     const condValue = (c: GrowCond) =>
         c.key === 'room' ? `${ROOM_NAME[c.need]} 이상`
             : `${c.missed > 0 && c.have < c.need ? `빠진 날 ${c.missed} · ` : ''}${c.have}/${c.need}일`;
@@ -264,13 +264,13 @@ export function HomeScreen() {
                                     label={pet.patted_today ? '🤚 쓰다듬었어요' : '🤚 쓰다듬기'} onPress={pat} />
                                 <Button variant="sun" size="sm" disabled={pet.fed_today || busy}
                                     label={pet.auto_fed_today ? '🍽️ 급식기가 줬어요' : pet.fed_today ? '🍚 오늘 먹었어요' : `🍚 밥 주기 🔶${data.shop.feed}`} onPress={feed} />
+                                <Button variant="ghost" size="sm" label={pet.walked_today ? '🌲 산책했어요' : '🌲 산책하기'} onPress={() => setGameOpen(true)} />
                                 {pet.poops.length > 0 && (
                                     <Button variant="ghost" size="sm" disabled={busy} label={`🧹 청소 (${pet.poops.length})`} onPress={() => void act('/pet/clean')} />
                                 )}
                             </>
                         )}
                         <Button variant="coral" size="sm" label="🛒 상점" onPress={() => setShopOpen(true)} />
-                        {data.dex && <Button variant="ghost" size="sm" label="🎮 미니게임" onPress={() => setGameOpen(true)} />}
                         {data.dex && <Button variant="ghost" size="sm" label={`📖 도감 ${data.dex.pets.length > 0 ? new Set(data.dex.pets.map(d => `${d.species}:${d.variant}`)).size : 0}/${data.dex.total}`} onPress={() => setDexOpen(true)} />}
                     </View>
                     {!egg && <Text style={styles.fullness}>배부름 {'❤️'.repeat(heldFullness ?? pet.fullness)}{'🤍'.repeat(3 - (heldFullness ?? pet.fullness))}</Text>}
@@ -400,13 +400,14 @@ export function HomeScreen() {
                     onSnack={emoji => setTimeout(() => ctrl.current?.snack(emoji), 300)} onClose={() => setShopOpen(false)} />
             )}
             {data?.dex && pet && (
-                <GameModal visible={gameOpen} onClose={() => setGameOpen(false)} dex={data.dex.pets} onPlayed={() => void loadPet()}
+                <WalkModal visible={gameOpen} onClose={() => setGameOpen(false)} dex={data.dex.pets} onPlayed={() => void loadPet()}
+                    walkedToday={!!pet.walked_today}
                     current={!egg && !gone && isSpecies(pet.species) ? {
                         id: pet.id, species: pet.species, variant: pet.variant, stage: pet.stage as Exclude<Stage, 'egg'>,
                         build: pet.build ?? 'normal', outfit: pet.wear, name: petName,
                     } : null}
-                    currentBlock={pet.mood === 'sick' ? '아플 때는 게임을 못 해요' : pet.mood === 'hungry' ? '배가 고파서 못 해요. 밥을 먼저 주세요'
-                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 해요 (도감 친구는 할 수 있어요)' : null} />
+                    currentBlock={pet.mood === 'sick' ? '아플 때는 산책을 못 해요' : pet.mood === 'hungry' ? '배가 고파서 못 가요. 밥을 먼저 주세요'
+                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 가요 (도감 친구와는 갈 수 있어요)' : null} />
             )}
             {data?.dex && <DexModal visible={dexOpen} pets={data.dex.pets} total={data.dex.total} onClose={() => setDexOpen(false)} />}
             <NameModal
@@ -532,7 +533,7 @@ const TEST_MODES: [PetMode, string][] = [
 
 // 서버 /pet/test 의 action
 const TEST_ACTIONS: [string, string][] = [
-    ['game_reset', '🎮 게임 판수 되돌리기'],
+    ['game_reset', '🌲 산책 판수 되돌리기'],
     ['next_day', '⏩ 하루 지나기'], ['hours_8', '⏩ 8시간 지나기'], ['fill', '✅ 성장 조건 채우기'],
     ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
     ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],

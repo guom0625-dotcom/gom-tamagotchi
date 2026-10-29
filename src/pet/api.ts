@@ -3,7 +3,7 @@ import type { Poop, Stage } from './PetScene';
 import type { Mood } from './brain';
 import type { Build } from './model';
 
-export type Cond = 'feed' | 'pat' | 'clean' | 'room';
+export type Cond = 'feed' | 'pat' | 'clean' | 'walk' | 'room';
 export interface GrowCond { key: Cond; have: number; need: number; missed: number }
 
 export interface PetInfo {
@@ -17,6 +17,8 @@ export interface PetInfo {
     fed_today: boolean;
     auto_fed_today: boolean;
     patted_today: boolean;
+    /** 오늘 산책 (숲길 달리기를 지금 펫과 한 판). 옛 서버는 안 보낸다 */
+    walked_today?: boolean;
     fullness: number;            // 0~3
     /** 체형 (알이면 null, 옛 서버는 안 보낸다). 간식을 많이 먹으면 통통·뚱뚱, 굶으면 홀쭉 */
     build?: Build | null;
@@ -48,9 +50,9 @@ export interface PetInfo {
 /** 도감에 남은 졸업한 펫 */
 export interface DexPet { id?: string; species: string; variant: number; name: string | null; at: number }
 
-/** 미니게임 똥피하기 — GET /pet/game, POST /pet/game/start·end */
-export type GameKind = 'poop' | 'run';
-/** score = 순위 점수 (똥피하기 ms, 달리기 거리+물고기). 옛 서버는 score_ms 만 */
+/** 🌲 산책하기(숲길 달리기) — GET /pet/game?kind=run, POST /pet/game/start·end. 똥피하기('poop')는 2026-10-29 뺐다 */
+export type GameKind = 'run';
+/** score = 순위 점수 (거리 + 사과×10) */
 export interface GameBoardRow { student: string; score?: number; score_ms: number; species: string; variant: number; stage: string; pet: string | null; me: boolean }
 export interface GameInfo {
     /** 오늘 남은 무료 판 */
