@@ -264,7 +264,7 @@ export function HomeScreen() {
                                     label={pet.patted_today ? '🤚 쓰다듬었어요' : '🤚 쓰다듬기'} onPress={pat} />
                                 <Button variant="sun" size="sm" disabled={pet.fed_today || busy}
                                     label={pet.auto_fed_today ? '🍽️ 급식기가 줬어요' : pet.fed_today ? '🍚 오늘 먹었어요' : `🍚 밥 주기 🔶${data.shop.feed}`} onPress={feed} />
-                                <Button variant="ghost" size="sm" label={pet.walked_today ? '🌲 산책했어요' : '🌲 산책하기'} onPress={() => setGameOpen(true)} />
+                                <Button variant="ghost" size="sm" label={pet.walked_today ? '🌲 산책 성공' : pet.walk?.score ? `🌲 산책 ${pet.walk.score}/${pet.walk.goal}` : '🌲 산책하기'} onPress={() => setGameOpen(true)} />
                                 {pet.poops.length > 0 && (
                                     <Button variant="ghost" size="sm" disabled={busy} label={`🧹 청소 (${pet.poops.length})`} onPress={() => void act('/pet/clean')} />
                                 )}
@@ -401,7 +401,7 @@ export function HomeScreen() {
             )}
             {data?.dex && pet && (
                 <WalkModal visible={gameOpen} onClose={() => setGameOpen(false)} dex={data.dex.pets} onPlayed={() => void loadPet()}
-                    walkedToday={!!pet.walked_today}
+                    walkedToday={!!pet.walked_today} walk={pet.walk ?? null}
                     current={!egg && !gone && isSpecies(pet.species) ? {
                         id: pet.id, species: pet.species, variant: pet.variant, stage: pet.stage as Exclude<Stage, 'egg'>,
                         build: pet.build ?? 'normal', outfit: pet.wear, name: petName,

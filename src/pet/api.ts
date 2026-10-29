@@ -17,8 +17,10 @@ export interface PetInfo {
     fed_today: boolean;
     auto_fed_today: boolean;
     patted_today: boolean;
-    /** 오늘 산책 (숲길 달리기를 지금 펫과 한 판). 옛 서버는 안 보낸다 */
+    /** 오늘 산책 미션 성공 (지금 펫과 달린 점수 합 ≥ goal). 옛 서버는 안 보낸다 */
     walked_today?: boolean;
+    /** 오늘 산책 점수 합과 목표 */
+    walk?: { score: number; goal: number };
     fullness: number;            // 0~3
     /** 체형 (알이면 null, 옛 서버는 안 보낸다). 간식을 많이 먹으면 통통·뚱뚱, 굶으면 홀쭉 */
     build?: Build | null;

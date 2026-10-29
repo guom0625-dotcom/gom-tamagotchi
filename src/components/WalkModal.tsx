@@ -1,5 +1,5 @@
 // 🌲 산책하기 — 숲길 달리기 한 판. 친구 고르기 → 달리기 → 결과. 점수와 순위는 서버가 관리한다.
-// 지금 키우는 펫과 한 판 마치면 그날 산책한 날 = 성장에 필요한 하루 돌봄 (2026-10-29 사용자 결정, 똥피하기는 뺐다).
+// 그날 지금 키우는 펫과 달린 점수 합이 목표(5000점)를 넘으면 산책 미션 성공 = 성장에 필요한 하루 돌봄 (2026-10-29 사용자 결정, 똥피하기는 뺐다).
 // 도감(졸업)의 펫과도 달릴 수 있지만 산책으로는 안 센다. 보상은 키우는 펫의 기분좋음.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
@@ -43,13 +43,15 @@ interface Props {
     /** 지금 펫으로 못 하는 까닭 (자는 중 등). null 이면 할 수 있다 */
     currentBlock: string | null;
     dex: DexPet[];
-    /** 오늘 지금 펫과 산책했나 */
+    /** 오늘 지금 펫과 산책 미션을 마쳤나 */
     walkedToday: boolean;
+    /** 오늘 지금 펫과 달린 점수 합과 목표 (옛 서버면 null) */
+    walk: { score: number; goal: number } | null;
     /** 한 판이 끝났다 (펫 기분이 바뀌었으니 다시 읽는다) */
     onPlayed: () => void;
 }
 
-export function WalkModal({ visible, onClose, current, currentBlock, dex, walkedToday, onPlayed }: Props) {
+export function WalkModal({ visible, onClose, current, currentBlock, dex, walkedToday, walk, onPlayed }: Props) {
     const insets = useSafeAreaInsets();
     const [info, setInfo] = useState<GameInfo | null>(null);
     const [phase, setPhase] = useState<'pick' | 'play' | 'over'>('pick');
@@ -139,8 +141,16 @@ export function WalkModal({ visible, onClose, current, currentBlock, dex, walked
                             {current && (
                                 <View style={[styles.walkDay, walkedToday && styles.walkDayDone]}>
                                     <Text style={styles.walkDayText}>{walkedToday
-                                        ? `✅ 오늘 ${withRang(current.name)} 산책했어요`
-                                        : `🌲 하루 한 번 ${withRang(current.name)} 산책해 주세요`}</Text>
+                                        ? `✅ 오늘 ${withRang(current.name)} 산책 미션 성공!`
+                                        : `🌲 오늘의 산책 미션: ${withRang(current.name)} ${walk?.goal ?? 5000}점`}</Text>
+                                    {walk && (
+                                        <>
+                                            <View style={styles.walkBar}>
+                                                <View style={[styles.walkFill, { width: `${Math.min(100, (walk.score / walk.goal) * 100)}%` }]} />
+                                            </View>
+                                            <Text style={styles.walkDayNote}>{walk.score.toLocaleString()} / {walk.goal.toLocaleString()}점{walkedToday ? '' : ' · 여러 판 점수를 더해요'}</Text>
+                                        </>
+                                    )}
                                 </View>
                             )}
                             <Text style={styles.note}>폰을 기울여 좌우로 움직이고, 화면을 누르면 점프해요. 바위·그루터기는 피하거나 뛰어넘고, 웅덩이·시냇물은 뛰어넘어요. 🍎 사과는 10점! 우리에 갇힌 친구를 구하면 파워업!</Text>
@@ -217,6 +227,9 @@ const styles = StyleSheet.create({
     walkDay: { paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', borderRadius: radius.md, backgroundColor: colors.sky[100], borderWidth: 2, borderColor: colors.sky[500] },
     walkDayDone: { backgroundColor: colors.card, borderColor: colors.ink[100] },
     walkDayText: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.ink[900] },
+    walkBar: { alignSelf: 'stretch', height: 10, marginTop: 8, borderRadius: radius.pill, backgroundColor: colors.ink[100], overflow: 'hidden' },
+    walkFill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.sky[500] },
+    walkDayNote: { marginTop: 4, fontFamily: fontFamilies.body, fontSize: fontSizes.sm, color: colors.ink[500] },
     section: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.lg, color: colors.ink[700] },
     note: { fontFamily: fontFamilies.body, fontSize: fontSizes.sm, color: colors.ink[500] },
     warn: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.coral[700], textAlign: 'center' },
