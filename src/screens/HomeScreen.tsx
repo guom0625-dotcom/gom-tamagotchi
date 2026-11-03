@@ -11,6 +11,7 @@ import { isSpecies, lookTitle } from '../pet/species';
 import { ShopModal } from '../components/ShopModal';
 import { DexModal } from '../components/DexModal';
 import { WalkModal } from '../components/WalkModal';
+import { PlayModal } from '../components/PlayModal';
 import { PetScene, type PetControl, type Stage } from '../pet/PetScene';
 import type { PetMode } from '../pet/brain';
 import type { Build } from '../pet/model';
@@ -64,6 +65,7 @@ export function HomeScreen() {
     const [shopOpen, setShopOpen] = useState(false);
     const [dexOpen, setDexOpen] = useState(false);
     const [gameOpen, setGameOpen] = useState(false);
+    const [playOpen, setPlayOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const scrollRef = useRef<ScrollView>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -195,7 +197,7 @@ export function HomeScreen() {
     };
 
     const condLabel = (key: Cond) =>
-        key === 'feed' ? '🍚 밥 주기' : key === 'pat' ? (egg ? '🥚 품어주기' : '🤚 쓰다듬기') : key === 'clean' ? '🧹 청소' : key === 'walk' ? '🌲 산책' : '🏠 방 넓히기';
+        key === 'feed' ? '🍚 밥 주기' : key === 'pat' ? (egg ? '🥚 품어주기' : '🤚 쓰다듬기') : key === 'clean' ? '🧹 청소' : key === 'walk' ? '🌲 산책' : key === 'play' ? '🐍 놀기' : '🏠 방 넓히기';
     const condValue = (c: GrowCond) =>
         c.key === 'room' ? `${ROOM_NAME[c.need]} 이상`
             : `${c.missed > 0 && c.have < c.need ? `빠진 날 ${c.missed} · ` : ''}${c.have}/${c.need}일`;
@@ -265,6 +267,9 @@ export function HomeScreen() {
                                 <Button variant="sun" size="sm" disabled={pet.fed_today || busy}
                                     label={pet.auto_fed_today ? '🍽️ 급식기가 줬어요' : pet.fed_today ? '🍚 오늘 먹었어요' : `🍚 밥 주기 🔶${data.shop.feed}`} onPress={feed} />
                                 <Button variant="ghost" size="sm" label={pet.walked_today ? '🌲 산책 성공' : pet.walk?.score ? `🌲 산책 ${pet.walk.score}/${pet.walk.goal}` : '🌲 산책하기'} onPress={() => setGameOpen(true)} />
+                                {pet.played_today !== undefined && (
+                                    <Button variant="ghost" size="sm" label={pet.played_today ? '🐍 놀아줬어요' : '🐍 놀아주기'} onPress={() => setPlayOpen(true)} />
+                                )}
                                 {pet.poops.length > 0 && (
                                     <Button variant="ghost" size="sm" disabled={busy} label={`🧹 청소 (${pet.poops.length})`} onPress={() => void act('/pet/clean')} />
                                 )}
@@ -409,6 +414,16 @@ export function HomeScreen() {
                     currentBlock={pet.mood === 'sick' ? '아플 때는 산책을 못 해요' : pet.mood === 'hungry' ? '배가 고파서 못 가요. 밥을 먼저 주세요'
                         : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 가요 (도감 친구와는 갈 수 있어요)' : null} />
             )}
+            {pet && (
+                <PlayModal visible={playOpen} onClose={() => setPlayOpen(false)} onPlayed={() => void loadPet()}
+                    playedToday={!!pet.played_today}
+                    current={!egg && !gone && isSpecies(pet.species) ? {
+                        id: pet.id, species: pet.species, variant: pet.variant, stage: pet.stage as Exclude<Stage, 'egg'>,
+                        build: pet.build ?? 'normal', outfit: pet.wear, name: petName,
+                    } : null}
+                    currentBlock={pet.mood === 'sick' ? '아플 때는 못 놀아요' : pet.mood === 'hungry' ? '배가 고파서 못 놀아요. 밥을 먼저 주세요'
+                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 놀아 주세요' : null} />
+            )}
             {data?.dex && <DexModal visible={dexOpen} pets={data.dex.pets} total={data.dex.total} onClose={() => setDexOpen(false)} />}
             <NameModal
                 visible={naming !== null}
@@ -533,7 +548,7 @@ const TEST_MODES: [PetMode, string][] = [
 
 // 서버 /pet/test 의 action
 const TEST_ACTIONS: [string, string][] = [
-    ['game_reset', '🌲 산책 판수 되돌리기'],
+    ['game_reset', '🎮 게임 판수 되돌리기'],
     ['next_day', '⏩ 하루 지나기'], ['hours_8', '⏩ 8시간 지나기'], ['fill', '✅ 성장 조건 채우기'],
     ['reset_today', '🔄 오늘 기록 지우기'], ['poop', '💩 똥 싸기'], ['poop_old', '💩 하루 지난 똥'],
     ['sick', '🤒 아프게'], ['severe', '🚑 중병으로'], ['heal', '💚 다 낫게'],

@@ -13,7 +13,7 @@ export const SKY = '#BFE6FF';
 const OUT = 0.05;               // 테두리 두께 (m)
 
 // 정해진 씨앗으로 늘 같은 무작위 (같은 조각은 같은 모습)
-function rng(seed: number) {
+export function rng(seed: number) {
     let a = seed >>> 0;
     return () => {
         a = (a + 0x6D2B79F5) >>> 0;
@@ -48,7 +48,7 @@ export function groundOff(off: number) {
 }
 
 // ── 숲 꾸밈 ─────────────────────────────────────
-function leafTree(b: BoxBuilder, x: number, y: number, z: number, k: number, r: () => number) {
+export function leafTree(b: BoxBuilder, x: number, y: number, z: number, k: number, r: () => number) {
     b.add(x - 0.35 * k, y, z - 0.35 * k, x + 0.35 * k, y + 2.4 * k, z + 0.35 * k, '#7A5236');
     const pal = r() < 0.15 ? ['#F2A23A', '#E8873A'] : r() < 0.3 ? ['#9BD36A', '#86C657'] : ['#4FA84A', '#43983F'];
     const top = y + 2.2 * k;
@@ -58,22 +58,22 @@ function leafTree(b: BoxBuilder, x: number, y: number, z: number, k: number, r: 
     b.add(x - 2.0 * k, top + 0.6 * k, z - 0.5 * k, x - 1.0 * k, top + 1.6 * k, z + 0.7 * k, pal[1]);
     if (pal[0] === '#4FA84A' && r() < 0.4) b.add(x + 0.5 * k, top + 0.8 * k, z + 1.55 * k, x + 0.9 * k, top + 1.2 * k, z + 1.75 * k, '#E8483F');   // 사과
 }
-function pineTree(b: BoxBuilder, x: number, y: number, z: number, k: number, r: () => number) {
+export function pineTree(b: BoxBuilder, x: number, y: number, z: number, k: number, r: () => number) {
     b.add(x - 0.3 * k, y, z - 0.3 * k, x + 0.3 * k, y + 1.1 * k, z + 0.3 * k, '#7A5236');
     const layers: [number, number][] = [[1.9, 1.0], [1.45, 2.0], [1.0, 3.0], [0.55, 4.0]];
     for (const [w, h0] of layers) b.add(x - w * k, y + h0 * k, z - w * k, x + w * k, y + (h0 + 1.05) * k, z + w * k, r() < 0.5 ? '#2F8F5B' : '#2A7F52', '#3AA066');
 }
-function flower(b: BoxBuilder, x: number, y: number, z: number, r: () => number) {
+export function flower(b: BoxBuilder, x: number, y: number, z: number, r: () => number) {
     const c = ['#FF6B8A', '#FFD23A', '#FFFFFF', '#B58CFF', '#FF8A3D'][Math.floor(r() * 5)];
     b.add(x - 0.04, y, z - 0.04, x + 0.04, y + 0.45, z + 0.04, '#3E9B4F', undefined, undefined, false);
     b.add(x - 0.18, y + 0.42, z - 0.18, x + 0.18, y + 0.62, z + 0.18, c, undefined, undefined, false);
 }
-function mushroom(b: BoxBuilder, x: number, y: number, z: number) {
+export function mushroom(b: BoxBuilder, x: number, y: number, z: number) {
     b.add(x - 0.15, y, z - 0.15, x + 0.15, y + 0.45, z + 0.15, '#F5EBDD');
     b.add(x - 0.42, y + 0.45, z - 0.42, x + 0.42, y + 0.75, z + 0.42, '#E8483F');
     b.add(x - 0.1, y + 0.75, z + 0.1, x + 0.08, y + 0.78, z + 0.28, '#FFFFFF', undefined, undefined, false);
 }
-function bush(b: BoxBuilder, x: number, y: number, z: number, k: number) {
+export function bush(b: BoxBuilder, x: number, y: number, z: number, k: number) {
     b.add(x - 0.9 * k, y, z - 0.7 * k, x + 0.9 * k, y + 0.9 * k, z + 0.7 * k, '#4FA84A');
     b.add(x - 0.5 * k, y + 0.9 * k, z - 0.4 * k, x + 0.6 * k, y + 1.3 * k, z + 0.5 * k, '#5DB955');
 }

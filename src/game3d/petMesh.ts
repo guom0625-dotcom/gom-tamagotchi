@@ -28,6 +28,7 @@ export function buildPet(model: PetModel, height: number): PetRig {
     scaled.scale.setScalar(scale);
     root.add(scaled);
     const body = new THREE.Group();
+    body.name = 'body';
     scaled.add(body);
 
     const pivotOf = (id: PartId): [number, number, number] => {
@@ -56,6 +57,7 @@ export function buildPet(model: PetModel, height: number): PetRig {
     const headPivot = pivotOf('head');
     const head = new THREE.Group();
     head.position.set(...headPivot);
+    head.name = 'head';
     head.add(mesh('head', headPivot));
     body.add(head);
     parts.head = head;
@@ -63,6 +65,7 @@ export function buildPet(model: PetModel, height: number): PetRig {
         const p = pivotOf(id);
         const g = new THREE.Group();
         g.position.set(p[0] - headPivot[0], p[1] - headPivot[1], p[2] - headPivot[2]);
+        g.name = id;
         g.add(mesh(id, p));
         head.add(g);
         parts[id] = g;
@@ -71,6 +74,7 @@ export function buildPet(model: PetModel, height: number): PetRig {
         const p = pivotOf(id);
         const g = new THREE.Group();
         g.position.set(...p);
+        g.name = id;
         g.add(mesh(id, p));
         body.add(g);
         parts[id] = g;
@@ -80,6 +84,15 @@ export function buildPet(model: PetModel, height: number): PetRig {
         root, body, parts, head, hipY: model.hipY, scale,
         dispose: () => { geoms.forEach(g => g.dispose()); mat.dispose(); line.dispose(); },
     };
+}
+
+/** 같은 모습을 여럿 쓸 때: 그림(geometry·재질)은 나눠 쓰고 자세만 따로. 지우기는 원본(dispose)이 한다 */
+export function cloneRig(src: PetRig): PetRig {
+    const root = src.root.clone();
+    const find = (n: string) => root.getObjectByName(n) as THREE.Group;
+    const parts = {} as Record<PartId, THREE.Group>;
+    for (const id of Object.keys(src.parts) as PartId[]) parts[id] = find(id);
+    return { root, body: find('body'), parts, head: find('head'), hipY: src.hipY, scale: src.scale, dispose: () => {} };
 }
 
 /** 달리기 자세. phase 는 걸음 주기(라디안), lean 은 좌우 기울기(-1~1), air 는 공중이면 true */
