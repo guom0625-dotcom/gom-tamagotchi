@@ -415,14 +415,14 @@ export function HomeScreen() {
                         : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 가요 (도감 친구와는 갈 수 있어요)' : null} />
             )}
             {pet && (
-                <PlayModal visible={playOpen} onClose={() => setPlayOpen(false)} onPlayed={() => void loadPet()}
+                <PlayModal visible={playOpen} onClose={() => setPlayOpen(false)} onPlayed={() => void loadPet()} dex={data?.dex?.pets ?? []}
                     playedToday={!!pet.played_today}
                     current={!egg && !gone && isSpecies(pet.species) ? {
                         id: pet.id, species: pet.species, variant: pet.variant, stage: pet.stage as Exclude<Stage, 'egg'>,
                         build: pet.build ?? 'normal', outfit: pet.wear, name: petName,
                     } : null}
                     currentBlock={pet.mood === 'sick' ? '아플 때는 못 놀아요' : pet.mood === 'hungry' ? '배가 고파서 못 놀아요. 밥을 먼저 주세요'
-                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 놀아 주세요' : null} />
+                        : mode === 'sleep' ? '자는 중이에요. 깨어 있을 때 놀아 주세요 (도감 친구와는 놀 수 있어요)' : null} />
             )}
             {data?.dex && <DexModal visible={dexOpen} pets={data.dex.pets} total={data.dex.total} onClose={() => setDexOpen(false)} />}
             <NameModal

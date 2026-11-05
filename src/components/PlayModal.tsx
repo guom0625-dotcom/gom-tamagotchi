@@ -1,25 +1,28 @@
 // 🐍 놀아주기 — 뱀 게임 한 판 (2026-11-03 사용자 결정). 하루 필수 돌봄: 지금 키우는 펫과 한 판 시작하면 그날 놀아 준 날(점수 기준 없음).
-// 하루 첫 판 무료, 그 뒤로 한 판 🔶1 (산책 판 수와 따로). 순위는 서버 전체, 보상은 펫 기분좋음.
-import React, { useCallback, useEffect, useState } from 'react';
+// 하루 3판 무료, 그 뒤로 한 판 🔶1 (산책 판 수와 따로, 2026-11-05). 도감(졸업) 친구와도 놀 수 있지만 놀아 준 날로는 안 센다.
+// 순위는 서버 전체, 보상은 펫 기분좋음.
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, ApiError } from '../api/client';
 import { Button } from './Button';
 import { PetThumb } from './DexModal';
 import { SnakeGame, type SnakeResult } from '../game/SnakeGame';
-import { isSpecies, type Species } from '../pet/species';
+import type { GameChar } from '../game/RunGame';
+import { isSpecies, lookTitle, type Species } from '../pet/species';
 import type { Build, BodyStage, Outfit } from '../pet/model';
-import type { GameInfo } from '../pet/api';
+import type { DexPet, GameInfo } from '../pet/api';
 import { colors, fontFamilies, fontSizes, radius } from '../theme';
 
 const EMOJI: Record<Species, string> = { bear: '🐻', dog: '🐶', cat: '🐱', rabbit: '🐰', squirrel: '🐿️', hamster: '🐹' };
+const STAGE_NAME: Record<string, string> = { baby: '유아', teen: '청소년', adult: '성인' };
 const ERRORS: Record<string, string> = {
     insufficient_gems: '토파즈가 모자라요',
     sick: '아플 때는 못 놀아요',
     hungry: '배가 고파서 못 놀아요. 밥을 먼저 주세요',
     egg: '알은 아직 못 놀아요',
     gone: '펫이 떠났어요',
-    not_found: '지금은 할 수 없어요',
+    not_found: '이 친구로는 할 수 없어요',
     expired: '너무 오래 지나서 기록하지 못했어요',
 };
 /** '초코랑' / '콩이랑' — 받침이 있으면 '이랑' */
@@ -28,6 +31,8 @@ const withRang = (name: string) => {
     return name + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? '이랑' : '랑');
 };
 
+interface Char extends GameChar { id: string; name: string; current: boolean }
+
 interface Props {
     visible: boolean;
     onClose: () => void;
@@ -35,20 +40,36 @@ interface Props {
     current: { id: string; species: Species; variant: number; stage: BodyStage; build: Build; outfit: Outfit; name: string } | null;
     /** 지금 펫으로 못 하는 까닭 (자는 중 등). null 이면 할 수 있다 */
     currentBlock: string | null;
+    dex: DexPet[];
     /** 오늘 놀아 줬나 */
     playedToday: boolean;
     /** 한 판을 시작했거나 끝났다 (놀아 준 날·기분·잔고가 바뀌었으니 다시 읽는다) */
     onPlayed: () => void;
 }
 
-export function PlayModal({ visible, onClose, current, currentBlock, playedToday, onPlayed }: Props) {
+export function PlayModal({ visible, onClose, current, currentBlock, dex, playedToday, onPlayed }: Props) {
     const insets = useSafeAreaInsets();
     const [info, setInfo] = useState<GameInfo | null>(null);
     const [phase, setPhase] = useState<'ready' | 'play' | 'over'>('ready');
-    const [game, setGame] = useState<{ id: string; n: number } | null>(null);
+    const [pickId, setPickId] = useState<string | null>(null);
+    const [game, setGame] = useState<{ id: string; char: Char; n: number } | null>(null);
     const [result, setResult] = useState<{ score: number; prevBest: number | null } | null>(null);
     const [msg, setMsg] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+
+    // 고를 수 있는 친구: 지금 펫 + 도감 (같은 모습은 마지막 졸업한 하나만)
+    const chars = useMemo<Char[]>(() => {
+        const list: Char[] = [];
+        if (current) list.push({ ...current, current: true });
+        const seen = new Map<string, DexPet>();
+        for (const d of dex) if (d.id && isSpecies(d.species)) seen.set(`${d.species}:${d.variant}`, d);
+        for (const d of [...seen.values()].reverse()) {
+            const sp = d.species as Species;
+            list.push({ id: d.id!, species: sp, variant: d.variant, stage: 'adult', build: 'normal', name: d.name ?? lookTitle(sp, d.variant), current: false });
+        }
+        return list;
+    }, [current, dex]);
+    const picked = chars.find(c => c.id === pickId) ?? chars.find(c => !(c.current && currentBlock)) ?? null;
 
     const load = useCallback(async () => {
         try { setInfo(await api<GameInfo>('/pet/game?kind=snake')); } catch { /* 다음에 */ }
@@ -65,15 +86,15 @@ export function PlayModal({ visible, onClose, current, currentBlock, playedToday
     };
 
     const start = async () => {
-        if (!current || busy) return;
-        if (currentBlock) { setMsg(currentBlock); return; }
+        if (!picked || busy) return;
+        if (picked.current && currentBlock) { setMsg(currentBlock); return; }
         setBusy(true); setMsg(null);
         try {
-            const r = await api<GameInfo & { game: { id: string } }>('/pet/game/start', { method: 'POST', body: JSON.stringify({ pet_id: current.id, kind: 'snake' }) });
+            const r = await api<GameInfo & { game: { id: string } }>('/pet/game/start', { method: 'POST', body: JSON.stringify({ pet_id: picked.id, kind: 'snake' }) });
             setInfo(r);
             setResult(null);
             onPlayed();   // 놀아 준 날이 됐다 (토파즈를 냈으면 잔고도)
-            setGame(g => ({ id: r.game.id, n: (g?.n ?? 0) + 1 }));
+            setGame(g => ({ id: r.game.id, char: picked, n: (g?.n ?? 0) + 1 }));
             setPhase('play');
         } catch (e) {
             setMsg(errText(e));
@@ -104,11 +125,11 @@ export function PlayModal({ visible, onClose, current, currentBlock, playedToday
                 <View style={styles.inner}>
                     <View style={styles.header}>
                         <Text style={styles.title}>🐍 놀아주기</Text>
-                        {info && <Text style={styles.plays}>{free ? '오늘 첫 판 무료' : info.price ? `한 판 🔶${info.price}` : ''}</Text>}
+                        {info && <Text style={styles.plays}>{free ? `오늘 무료 ${info.plays_left}/${info.plays_per_day}판` : info.price ? `무료 판 끝 · 한 판 🔶${info.price}` : ''}</Text>}
                     </View>
 
-                    {phase === 'play' && game && current ? (
-                        <SnakeGame key={game.n} char={current} onOver={r => void over(r)} />
+                    {phase === 'play' && game ? (
+                        <SnakeGame key={game.n} char={game.char} onOver={r => void over(r)} />
                     ) : (
                         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 14, paddingBottom: 12 }}>
                             {current && (
@@ -129,10 +150,26 @@ export function PlayModal({ visible, onClose, current, currentBlock, playedToday
                                     {current && <Text style={styles.resultNote}>😊 {current.name}의 기분이 좋아졌어요</Text>}
                                 </View>
                             )}
-                            {!current && <Text style={styles.note}>알이 깨어나면 같이 놀 수 있어요</Text>}
-                            {current && currentBlock && <Text style={styles.warn}>{currentBlock}</Text>}
+
+                            <Text style={styles.section}>누구랑 놀까요?</Text>
+                            {chars.length === 0 && <Text style={styles.note}>알이 깨어나면 같이 놀 수 있어요. 졸업한 친구와도 놀 수 있어요</Text>}
+                            <View style={styles.grid}>
+                                {chars.map(c => {
+                                    const off = c.current && !!currentBlock;
+                                    return (
+                                        <Pressable key={c.id} onPress={() => setPickId(c.id)}
+                                            style={[styles.cell, picked?.id === c.id && styles.cellOn, off && styles.cellOff]}>
+                                            <PetThumb species={c.species} variant={c.variant} stage={c.stage} size={64} />
+                                            <Text style={styles.cellName} numberOfLines={1}>{c.name}</Text>
+                                            <Text style={styles.cellNote} numberOfLines={1}>{c.current ? `지금 펫 · ${STAGE_NAME[c.stage]}` : '도감'}</Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+                            {picked && !picked.current && current && <Text style={styles.note}>도감 친구와 논 건 오늘 놀아 준 날로 치지 않아요</Text>}
+                            {picked?.current && currentBlock && <Text style={styles.warn}>{currentBlock}</Text>}
                             {msg && <Text style={styles.warn}>{msg}</Text>}
-                            <Button variant="coral" disabled={busy || !current || !info || !!currentBlock || cantPay}
+                            <Button variant="coral" disabled={busy || !picked || !info || (picked.current && !!currentBlock) || cantPay}
                                 label={`${phase === 'over' ? '🔁 한 판 더' : '▶ 시작'}${info && !free && info.price ? ` 🔶${info.price}` : ''}`}
                                 onPress={start} style={{ alignSelf: 'center' }} />
 
@@ -169,6 +206,12 @@ const styles = StyleSheet.create({
     day: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.sun[300], borderWidth: 2, borderColor: colors.coral[500] },
     dayDone: { backgroundColor: colors.card, borderColor: colors.ink[100] },
     dayText: { flex: 1, fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.ink[900] },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    cell: { width: 92, alignItems: 'center', paddingVertical: 8, gap: 2, backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
+    cellOn: { borderColor: colors.coral[500] },
+    cellOff: { opacity: 0.5 },
+    cellName: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.sm, color: colors.ink[900], maxWidth: 84 },
+    cellNote: { fontFamily: fontFamilies.body, fontSize: fontSizes.xs, color: colors.ink[500], maxWidth: 84 },
     section: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.lg, color: colors.ink[700] },
     note: { fontFamily: fontFamilies.body, fontSize: fontSizes.sm, color: colors.ink[500] },
     warn: { fontFamily: fontFamilies.bodyBold, fontSize: fontSizes.md, color: colors.coral[700], textAlign: 'center' },
